@@ -1,0 +1,26 @@
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.userprefs
+
+# Build output
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+*.log
+
+# NuGet
+*.nupkg
+packages/
+
+# Local redesign backups (git history is the backup; delete this line to include them)
+_backup_*/
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
