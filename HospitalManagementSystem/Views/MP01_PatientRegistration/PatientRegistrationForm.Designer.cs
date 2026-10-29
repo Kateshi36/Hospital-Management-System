@@ -24,6 +24,21 @@
         {
             components = new System.ComponentModel.Container();
             tlpRoot = new TableLayoutPanel();
+            lblStep5 = new Label();
+            tlpBenefits = new TableLayoutPanel();
+            lblDiscountCard = new Label();
+            cboDiscountCard = new ComboBox();
+            lblDiscountCardNo = new Label();
+            txtDiscountCardNo = new TextBox();
+            lblCoverage = new Label();
+            cboCoverage = new ComboBox();
+            lblCoverageNo = new Label();
+            txtCoverageNo = new TextBox();
+            lblHmoProvider = new Label();
+            cboHmoProvider = new ComboBox();
+            lblBenefitsNote = new Label();
+            capBenefits = new Label();
+            lblCardBenefits = new Label();
             pnlTitle = new Panel();
             lblRequiredHint = new Label();
             lblTitle = new Label();
@@ -126,6 +141,7 @@
             lblProfileTitle = new Label();
             errorProvider = new ErrorProvider(components);
             tlpRoot.SuspendLayout();
+            tlpBenefits.SuspendLayout();
             pnlTitle.SuspendLayout();
             tlpMain.SuspendLayout();
             pnlEntryCard.SuspendLayout();
@@ -271,10 +287,14 @@
             tlpForm.Controls.Add(tlpMedical, 0, 6);
             tlpForm.Controls.Add(lblStep4, 0, 7);
             tlpForm.Controls.Add(tlpEmergency, 0, 8);
+            tlpForm.Controls.Add(lblStep5, 0, 9);
+            tlpForm.Controls.Add(tlpBenefits, 0, 10);
             tlpForm.Dock = DockStyle.Top;
             tlpForm.Margin = new Padding(0);
             tlpForm.Name = "tlpForm";
-            tlpForm.RowCount = 9;
+            tlpForm.RowCount = 11;
+            tlpForm.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            tlpForm.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             tlpForm.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             tlpForm.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             tlpForm.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -995,6 +1015,206 @@
             lblEmergencyNote.TabIndex = 6;
             lblEmergencyNote.Text = "Fill all three fields or leave all empty.";
             // 
+            // lblStep5
+            // 
+            lblStep5.AutoSize = true;
+            lblStep5.BackColor = Color.Transparent;
+            lblStep5.Font = new Font("Segoe UI", 9F, FontStyle.Bold, GraphicsUnit.Point, 0);
+            lblStep5.ForeColor = Color.FromArgb(18, 122, 140);
+            lblStep5.Margin = new Padding(0, 4, 0, 14);
+            lblStep5.Name = "lblStep5";
+            lblStep5.UseMnemonic = false;
+            lblStep5.TabIndex = 9;
+            lblStep5.Text = "5  ·  DISCOUNT CARD & COVERAGE";
+            // 
+            // tlpBenefits
+            // 
+            tlpBenefits.AutoSize = true;
+            tlpBenefits.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            tlpBenefits.BackColor = Color.Transparent;
+            tlpBenefits.ColumnCount = 2;
+            tlpBenefits.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
+            tlpBenefits.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
+            tlpBenefits.Controls.Add(lblDiscountCard, 0, 0);
+            tlpBenefits.Controls.Add(cboDiscountCard, 0, 1);
+            tlpBenefits.Controls.Add(lblDiscountCardNo, 1, 0);
+            tlpBenefits.Controls.Add(txtDiscountCardNo, 1, 1);
+            tlpBenefits.Controls.Add(lblCoverage, 0, 2);
+            tlpBenefits.Controls.Add(cboCoverage, 0, 3);
+            tlpBenefits.Controls.Add(lblCoverageNo, 1, 2);
+            tlpBenefits.Controls.Add(txtCoverageNo, 1, 3);
+            tlpBenefits.Controls.Add(lblHmoProvider, 0, 4);
+            tlpBenefits.SetColumnSpan(lblHmoProvider, 2);
+            tlpBenefits.Controls.Add(cboHmoProvider, 0, 5);
+            tlpBenefits.SetColumnSpan(cboHmoProvider, 2);
+            tlpBenefits.Controls.Add(lblBenefitsNote, 0, 6);
+            tlpBenefits.SetColumnSpan(lblBenefitsNote, 2);
+            tlpBenefits.Dock = DockStyle.Top;
+            tlpBenefits.Margin = new Padding(0);
+            tlpBenefits.Name = "tlpBenefits";
+            tlpBenefits.RowCount = 7;
+            tlpBenefits.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            tlpBenefits.RowStyles.Add(new RowStyle(SizeType.Absolute, 54F));
+            tlpBenefits.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            tlpBenefits.RowStyles.Add(new RowStyle(SizeType.Absolute, 54F));
+            tlpBenefits.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            tlpBenefits.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            tlpBenefits.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            tlpBenefits.TabIndex = 10;
+            // 
+            // lblDiscountCard
+            // 
+            lblDiscountCard.AutoSize = true;
+            lblDiscountCard.BackColor = Color.Transparent;
+            lblDiscountCard.Font = new Font("Segoe UI Semibold", 9.75F, FontStyle.Regular, GraphicsUnit.Point, 0);
+            lblDiscountCard.ForeColor = Color.FromArgb(20, 34, 51);
+            lblDiscountCard.Margin = new Padding(0, 0, 6, 6);
+            lblDiscountCard.Name = "lblDiscountCard";
+            lblDiscountCard.TabIndex = 0;
+            lblDiscountCard.Text = "Discount card";
+            // 
+            // cboDiscountCard
+            // 
+            cboDiscountCard.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            cboDiscountCard.DropDownStyle = ComboBoxStyle.DropDownList;
+            cboDiscountCard.Font = new Font("Segoe UI", 10.5F, FontStyle.Regular, GraphicsUnit.Point, 0);
+            cboDiscountCard.FormattingEnabled = true;
+            cboDiscountCard.Margin = new Padding(0, 0, 6, 14);
+            cboDiscountCard.Name = "cboDiscountCard";
+            cboDiscountCard.Size = new Size(200, 32);
+            cboDiscountCard.TabIndex = 1;
+            // 
+            // lblDiscountCardNo
+            // 
+            lblDiscountCardNo.AutoSize = true;
+            lblDiscountCardNo.BackColor = Color.Transparent;
+            lblDiscountCardNo.Font = new Font("Segoe UI Semibold", 9.75F, FontStyle.Regular, GraphicsUnit.Point, 0);
+            lblDiscountCardNo.ForeColor = Color.FromArgb(20, 34, 51);
+            lblDiscountCardNo.Margin = new Padding(6, 0, 0, 6);
+            lblDiscountCardNo.Name = "lblDiscountCardNo";
+            lblDiscountCardNo.TabIndex = 2;
+            lblDiscountCardNo.Text = "ID number";
+            // 
+            // txtDiscountCardNo
+            // 
+            txtDiscountCardNo.AutoSize = false;
+            txtDiscountCardNo.BackColor = Color.White;
+            txtDiscountCardNo.BorderStyle = BorderStyle.FixedSingle;
+            txtDiscountCardNo.Dock = DockStyle.Fill;
+            txtDiscountCardNo.Font = new Font("Segoe UI", 10.5F, FontStyle.Regular, GraphicsUnit.Point, 0);
+            txtDiscountCardNo.ForeColor = Color.FromArgb(20, 34, 51);
+            txtDiscountCardNo.Margin = new Padding(6, 0, 0, 14);
+            txtDiscountCardNo.MaxLength = 30;
+            txtDiscountCardNo.Name = "txtDiscountCardNo";
+            txtDiscountCardNo.Size = new Size(200, 40);
+            txtDiscountCardNo.TabIndex = 3;
+            // 
+            // lblCoverage
+            // 
+            lblCoverage.AutoSize = true;
+            lblCoverage.BackColor = Color.Transparent;
+            lblCoverage.Font = new Font("Segoe UI Semibold", 9.75F, FontStyle.Regular, GraphicsUnit.Point, 0);
+            lblCoverage.ForeColor = Color.FromArgb(20, 34, 51);
+            lblCoverage.Margin = new Padding(0, 0, 6, 6);
+            lblCoverage.Name = "lblCoverage";
+            lblCoverage.TabIndex = 4;
+            lblCoverage.Text = "PhilHealth / HMO";
+            // 
+            // cboCoverage
+            // 
+            cboCoverage.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            cboCoverage.DropDownStyle = ComboBoxStyle.DropDownList;
+            cboCoverage.Font = new Font("Segoe UI", 10.5F, FontStyle.Regular, GraphicsUnit.Point, 0);
+            cboCoverage.FormattingEnabled = true;
+            cboCoverage.Margin = new Padding(0, 0, 6, 14);
+            cboCoverage.Name = "cboCoverage";
+            cboCoverage.Size = new Size(200, 32);
+            cboCoverage.TabIndex = 5;
+            // 
+            // lblCoverageNo
+            // 
+            lblCoverageNo.AutoSize = true;
+            lblCoverageNo.BackColor = Color.Transparent;
+            lblCoverageNo.Font = new Font("Segoe UI Semibold", 9.75F, FontStyle.Regular, GraphicsUnit.Point, 0);
+            lblCoverageNo.ForeColor = Color.FromArgb(20, 34, 51);
+            lblCoverageNo.Margin = new Padding(6, 0, 0, 6);
+            lblCoverageNo.Name = "lblCoverageNo";
+            lblCoverageNo.TabIndex = 6;
+            lblCoverageNo.Text = "Member no.";
+            // 
+            // txtCoverageNo
+            // 
+            txtCoverageNo.AutoSize = false;
+            txtCoverageNo.BackColor = Color.White;
+            txtCoverageNo.BorderStyle = BorderStyle.FixedSingle;
+            txtCoverageNo.Dock = DockStyle.Fill;
+            txtCoverageNo.Font = new Font("Segoe UI", 10.5F, FontStyle.Regular, GraphicsUnit.Point, 0);
+            txtCoverageNo.ForeColor = Color.FromArgb(20, 34, 51);
+            txtCoverageNo.Margin = new Padding(6, 0, 0, 14);
+            txtCoverageNo.MaxLength = 30;
+            txtCoverageNo.Name = "txtCoverageNo";
+            txtCoverageNo.Size = new Size(200, 40);
+            txtCoverageNo.TabIndex = 7;
+            // 
+            // lblHmoProvider
+            // 
+            lblHmoProvider.AutoSize = true;
+            lblHmoProvider.BackColor = Color.Transparent;
+            lblHmoProvider.Font = new Font("Segoe UI Semibold", 9.75F, FontStyle.Regular, GraphicsUnit.Point, 0);
+            lblHmoProvider.ForeColor = Color.FromArgb(20, 34, 51);
+            lblHmoProvider.Margin = new Padding(0, 0, 0, 6);
+            lblHmoProvider.Name = "lblHmoProvider";
+            lblHmoProvider.TabIndex = 8;
+            lblHmoProvider.Text = "HMO company";
+            lblHmoProvider.Visible = false;
+            // 
+            // cboHmoProvider
+            // 
+            cboHmoProvider.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            cboHmoProvider.DropDownStyle = ComboBoxStyle.DropDown;
+            cboHmoProvider.Font = new Font("Segoe UI", 10.5F, FontStyle.Regular, GraphicsUnit.Point, 0);
+            cboHmoProvider.FormattingEnabled = true;
+            cboHmoProvider.Margin = new Padding(0, 0, 0, 14);
+            cboHmoProvider.Name = "cboHmoProvider";
+            cboHmoProvider.Size = new Size(200, 32);
+            cboHmoProvider.TabIndex = 9;
+            cboHmoProvider.Visible = false;
+            // 
+            // lblBenefitsNote
+            // 
+            lblBenefitsNote.AutoSize = true;
+            lblBenefitsNote.BackColor = Color.Transparent;
+            lblBenefitsNote.Font = new Font("Segoe UI", 9F, FontStyle.Regular, GraphicsUnit.Point, 0);
+            lblBenefitsNote.ForeColor = Color.FromArgb(91, 107, 124);
+            lblBenefitsNote.Margin = new Padding(0, 0, 0, 4);
+            lblBenefitsNote.Name = "lblBenefitsNote";
+            lblBenefitsNote.TabIndex = 10;
+            lblBenefitsNote.Text = "Senior Citizen / PWD: 20% off and VAT-exempt. PhilHealth / HMO coverage is deducted on the bill. Itemized Billing applies these automatically.";
+            lblBenefitsNote.MaximumSize = new Size(520, 0);
+            // 
+            // capBenefits
+            // 
+            capBenefits.AutoSize = true;
+            capBenefits.BackColor = Color.Transparent;
+            capBenefits.Font = new Font("Segoe UI", 9F, FontStyle.Regular, GraphicsUnit.Point, 0);
+            capBenefits.ForeColor = Color.FromArgb(91, 107, 124);
+            capBenefits.Margin = new Padding(0, 7, 8, 7);
+            capBenefits.Name = "capBenefits";
+            capBenefits.TabIndex = 24;
+            capBenefits.Text = "Discount / coverage";
+            // 
+            // lblCardBenefits
+            // 
+            lblCardBenefits.AutoSize = true;
+            lblCardBenefits.BackColor = Color.Transparent;
+            lblCardBenefits.Font = new Font("Segoe UI", 10.5F, FontStyle.Regular, GraphicsUnit.Point, 0);
+            lblCardBenefits.ForeColor = Color.FromArgb(20, 34, 51);
+            lblCardBenefits.Margin = new Padding(0, 6, 8, 6);
+            lblCardBenefits.Name = "lblCardBenefits";
+            lblCardBenefits.TabIndex = 25;
+            lblCardBenefits.Text = "-";
+            lblCardBenefits.UseMnemonic = false;
+            // 
             // tlpButtons
             // 
             tlpButtons.BackColor = Color.Transparent;
@@ -1183,13 +1403,17 @@
             tlpCardBody.Controls.Add(capEmergency, 0, 7);
             tlpCardBody.Controls.Add(lblCardEmergency, 1, 7);
             tlpCardBody.SetColumnSpan(lblCardEmergency, 3);
-            tlpCardBody.Controls.Add(capRegistered, 0, 8);
-            tlpCardBody.Controls.Add(lblCardRegistered, 1, 8);
+            tlpCardBody.Controls.Add(capBenefits, 0, 8);
+            tlpCardBody.Controls.Add(lblCardBenefits, 1, 8);
+            tlpCardBody.SetColumnSpan(lblCardBenefits, 3);
+            tlpCardBody.Controls.Add(capRegistered, 0, 9);
+            tlpCardBody.Controls.Add(lblCardRegistered, 1, 9);
             tlpCardBody.SetColumnSpan(lblCardRegistered, 3);
             tlpCardBody.Dock = DockStyle.Top;
             tlpCardBody.Margin = new Padding(0, 12, 0, 0);
             tlpCardBody.Name = "tlpCardBody";
-            tlpCardBody.RowCount = 9;
+            tlpCardBody.RowCount = 10;
+            tlpCardBody.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             tlpCardBody.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             tlpCardBody.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             tlpCardBody.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -1575,6 +1799,8 @@
             Name = "PatientRegistrationForm";
             tlpRoot.ResumeLayout(false);
             tlpRoot.PerformLayout();
+            tlpBenefits.ResumeLayout(false);
+            tlpBenefits.PerformLayout();
             pnlTitle.ResumeLayout(false);
             pnlTitle.PerformLayout();
             tlpMain.ResumeLayout(false);
@@ -1734,5 +1960,20 @@
         private System.Windows.Forms.DataGridViewTextBoxColumn colAge;
         private System.Windows.Forms.DataGridViewTextBoxColumn colGender;
         private System.Windows.Forms.DataGridViewTextBoxColumn colPhone;
+        private System.Windows.Forms.Label lblStep5;
+        private System.Windows.Forms.TableLayoutPanel tlpBenefits;
+        private System.Windows.Forms.Label lblDiscountCard;
+        private System.Windows.Forms.ComboBox cboDiscountCard;
+        private System.Windows.Forms.Label lblDiscountCardNo;
+        private System.Windows.Forms.TextBox txtDiscountCardNo;
+        private System.Windows.Forms.Label lblCoverage;
+        private System.Windows.Forms.ComboBox cboCoverage;
+        private System.Windows.Forms.Label lblCoverageNo;
+        private System.Windows.Forms.TextBox txtCoverageNo;
+        private System.Windows.Forms.Label lblHmoProvider;
+        private System.Windows.Forms.ComboBox cboHmoProvider;
+        private System.Windows.Forms.Label lblBenefitsNote;
+        private System.Windows.Forms.Label capBenefits;
+        private System.Windows.Forms.Label lblCardBenefits;
     }
 }

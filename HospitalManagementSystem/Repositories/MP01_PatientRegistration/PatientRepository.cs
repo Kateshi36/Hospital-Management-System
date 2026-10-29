@@ -13,7 +13,8 @@ namespace HospitalManagementSystem.Repositories.MP01_PatientRegistration
             "       p.gender, p.blood_type, p.phone_number, p.email, " +
             "       p.street_address, p.city, p.province, p.postal_code, " +
             "       p.allergies, p.medical_history, p.registered_at, " +
-            "       p.emergency_contact_name, p.emergency_contact_phone, p.emergency_contact_relationship " +
+            "       p.emergency_contact_name, p.emergency_contact_phone, p.emergency_contact_relationship, " +
+            "       p.discount_card_type, p.discount_card_number, p.coverage_type, p.coverage_number, p.coverage_provider " +
             "FROM patients p ";
 
         /// <summary>
@@ -31,9 +32,11 @@ namespace HospitalManagementSystem.Repositories.MP01_PatientRegistration
                     "INSERT INTO patients (patient_id, first_name, middle_name, last_name, date_of_birth, gender, " +
                     "                      blood_type, phone_number, email, street_address, city, province, postal_code, " +
                     "                      allergies, medical_history, emergency_contact_name, emergency_contact_phone, " +
-                    "                      emergency_contact_relationship, registered_by_user_id) " +
+                    "                      emergency_contact_relationship, registered_by_user_id, " +
+                    "                      discount_card_type, discount_card_number, coverage_type, coverage_number, coverage_provider) " +
                     "VALUES (@id, @first, @middle, @last, @dob, @gender, @blood, @phone, @email, @street, @city, @province, " +
-                    "        @postal, @allergies, @history, @ecName, @ecPhone, @ecRelation, @user)",
+                    "        @postal, @allergies, @history, @ecName, @ecPhone, @ecRelation, @user, " +
+                    "        @cardType, @cardNo, @covType, @covNo, @covProvider)",
                     DatabaseHelper.Param("@id", patient.PatientId),
                     DatabaseHelper.Param("@first", patient.FirstName),
                     DatabaseHelper.Param("@middle", NullIfBlank(patient.MiddleName)),
@@ -52,11 +55,18 @@ namespace HospitalManagementSystem.Repositories.MP01_PatientRegistration
                     DatabaseHelper.Param("@ecName", hasContact ? patient.EmergencyContactName : null),
                     DatabaseHelper.Param("@ecPhone", hasContact ? patient.EmergencyContactPhone : null),
                     DatabaseHelper.Param("@ecRelation", hasContact ? patient.EmergencyContactRelation : null),
-                    DatabaseHelper.Param("@user", registeredByUserId));
+                    DatabaseHelper.Param("@user", registeredByUserId),
+                    DatabaseHelper.Param("@cardType", CardType(patient)),
+                    DatabaseHelper.Param("@cardNo", CardNumber(patient)),
+                    DatabaseHelper.Param("@covType", CoverageType(patient)),
+                    DatabaseHelper.Param("@covNo", CoverageNumber(patient)),
+                    DatabaseHelper.Param("@covProvider", CoverageProvider(patient)));
 
                 patient.RegisteredAt = DatabaseHelper.ExecuteScalar<DateTime>(conn, tx,
                     "SELECT registered_at FROM patients WHERE patient_id = @id",
                     DatabaseHelper.Param("@id", patient.PatientId));
+                AuditHelper.Log(conn, tx, AuditHelper.Create, AuditHelper.Patient, patient.PatientId, patient.PatientId,
+                    $"Registered {patient.LastName}, {patient.FirstName}");
 
                 return patient;
             });
@@ -107,9 +117,26 @@ namespace HospitalManagementSystem.Repositories.MP01_PatientRegistration
                 EmergencyContactName = DatabaseHelper.GetString(row, "emergency_contact_name"),
                 EmergencyContactPhone = DatabaseHelper.GetString(row, "emergency_contact_phone"),
                 EmergencyContactRelation = DatabaseHelper.GetString(row, "emergency_contact_relationship"),
-                RegisteredAt = Convert.ToDateTime(row["registered_at"])
+                RegisteredAt = Convert.ToDateTime(row["registered_at"]),
+                DiscountCardType = Or(DatabaseHelper.GetString(row, "discount_card_type"), BenefitRules.None),
+                DiscountCardNumber = DatabaseHelper.GetString(row, "discount_card_number"),
+                CoverageType = Or(DatabaseHelper.GetString(row, "coverage_type"), BenefitRules.None),
+                CoverageNumber = DatabaseHelper.GetString(row, "coverage_number"),
+                CoverageProvider = DatabaseHelper.GetString(row, "coverage_provider")
             };
         }
+
+        private static string Or(string text, string fallback) => text.Length > 0 ? text : fallback;
+
+        // ---- the values stored for the discount card / coverage (blank parts become NULL; "None" clears the numbers)
+        public static string CardType(Patient p) => BenefitRules.DiscountCards.Contains(p.DiscountCardType) ? p.DiscountCardType : BenefitRules.None;
+        public static string? CardNumber(Patient p) => CardType(p) == BenefitRules.None ? null : NullIfBlank(p.DiscountCardNumber);
+        public static string CoverageType(Patient p) => BenefitRules.Coverages.Contains(p.CoverageType) ? p.CoverageType : BenefitRules.None;
+        public static string? CoverageNumber(Patient p) =>
+            CoverageType(p) == BenefitRules.None ? null
+            : CoverageType(p) == BenefitRules.PhilHealth ? NullIfBlank(BenefitRules.FormatPhilHealth(p.CoverageNumber))
+            : NullIfBlank(p.CoverageNumber);
+        public static string? CoverageProvider(Patient p) => CoverageType(p) == BenefitRules.Hmo ? NullIfBlank(p.CoverageProvider) : null;
 
         private static string? NullIfBlank(string? text)
         {

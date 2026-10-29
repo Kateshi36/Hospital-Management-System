@@ -26,7 +26,7 @@ namespace HospitalManagementSystem.Views.MP05_QueueBoard
     /// The layout lives in QueueBoardForm.Designer.cs; this file holds behaviour plus the runtime parts of the redesign
     /// (button kinds, the two-line patient cell, emergency row tint, the check-in list drawn as selectable rows).
     /// </summary>
-    public partial class QueueBoardForm : Form
+    public partial class QueueBoardForm : Views.Main.PageHost
     {
         private const int AutoRefreshSeconds = 15;
 
@@ -62,6 +62,7 @@ namespace HospitalManagementSystem.Views.MP05_QueueBoard
 
             WireEvents();
             Load += (s, e) => InitializeScreen();
+            AppEvents.OnDoctorsChanged(this, ReloadDoctorList);   // a doctor was added / edited in Doctor Directory
             Disposed += (s, e) => { _timer.Dispose(); tipStats.Dispose(); };
         }
 
@@ -300,6 +301,30 @@ namespace HospitalManagementSystem.Views.MP05_QueueBoard
 
             ReloadBoard(false);
             _timer.Start();
+        }
+
+        /// <summary>Reloads the doctor drop-down after a doctor changed in MP03, keeping the selected doctor.</summary>
+        private void ReloadDoctorList()
+        {
+            if (cboDoctor.DataSource == null) return;
+            string? keep = SelectedDoctor?.DoctorId;
+            _loading = true;
+            try
+            {
+                List<DoctorOption> doctors = _repository.GetDoctors();
+                cboDoctor.DataSource = doctors;
+                int index = keep == null ? (doctors.Count > 0 ? 0 : -1) : doctors.FindIndex(d => d.DoctorId == keep);
+                cboDoctor.SelectedIndex = index < 0 && doctors.Count > 0 ? 0 : index;
+            }
+            catch (Exception ex)
+            {
+                MessageHelper.Error(ex, "The doctor list could not be refreshed.", DialogOwner());
+            }
+            finally
+            {
+                _loading = false;
+            }
+            ReloadBoard(true);
         }
 
         /// <summary>Loads the board and the check-in list of the selected doctor. quiet = automatic refresh (no pop-up on failure).</summary>

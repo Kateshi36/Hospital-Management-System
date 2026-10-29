@@ -339,6 +339,11 @@ namespace HospitalManagementSystem.Repositories.MP10_Laboratory
                     "UPDATE lab_orders SET status = @done WHERE order_id = @id",
                     DatabaseHelper.Param("@done", StatusCompleted), DatabaseHelper.Param("@id", input.OrderId));
 
+                object? patient = DatabaseHelper.ExecuteScalar(conn, tx,
+                    "SELECT patient_id FROM lab_orders WHERE order_id = @id", DatabaseHelper.Param("@id", input.OrderId));
+                AuditHelper.Log(conn, tx, AuditHelper.Create, AuditHelper.LabResult, resultId, patient as string,
+                    $"Order {orderCode}, {DatabaseHelper.GetString(row, "test_name")}: {value}{(abnormal ? " (ABNORMAL)" : string.Empty)}");
+
                 return new LabResultSaved
                 {
                     ResultId = resultId,

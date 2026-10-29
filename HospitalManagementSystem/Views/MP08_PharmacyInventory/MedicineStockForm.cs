@@ -22,7 +22,7 @@ namespace HospitalManagementSystem.Views.MP08_MedicineStock
     /// Every rule lives in MedicineStockRepository; the form shows the same rules next to the fields.
     /// All visuals live in MedicineStockForm.Designer.cs; the grid columns are created here (BuildGridColumns).
     /// </summary>
-    public partial class MedicineStockForm : Form
+    public partial class MedicineStockForm : Views.Main.PageHost
     {
         private static readonly Color ExpiredBack = ThemeHelper.DangerSoft;
         private static readonly Color SoonBack = ThemeHelper.WarningSoft;
@@ -130,6 +130,7 @@ namespace HospitalManagementSystem.Views.MP08_MedicineStock
             btnCatSearch.Click += (s, e) => LoadMedicines();
             btnCatAll.Click += (s, e) => { txtCatSearch.Clear(); LoadMedicines(); };
             txtCatSearch.KeyDown += (s, e) => OnEnter(e, () => LoadMedicines());
+            SearchHelper.AttachLive(txtCatSearch, () => LoadMedicines());
             dgvMedicines.SelectionChanged += (s, e) => OnMedicineSelected();
             btnMedNew.Click += (s, e) => NewMedicine();
             btnMedSave.Click += (s, e) => SaveMedicine();
@@ -138,6 +139,7 @@ namespace HospitalManagementSystem.Views.MP08_MedicineStock
             btnStockSearch.Click += (s, e) => LoadStock();
             btnStockAll.Click += (s, e) => { txtStockSearch.Clear(); chkAlertsOnly.Checked = false; LoadStock(); };
             txtStockSearch.KeyDown += (s, e) => OnEnter(e, () => LoadStock());
+            SearchHelper.AttachLive(txtStockSearch, () => LoadStock());
             chkAlertsOnly.CheckedChanged += (s, e) => { if (!_loading) LoadStock(); };
             dgvStock.SelectionChanged += (s, e) => OnStockSelected();
             dgvStock.CellFormatting += OnStockCellFormatting;

@@ -10,7 +10,7 @@ namespace HospitalManagementSystem.Views.MP02_PatientSearchEditor
     ///
     /// All visuals live in AuditHistoryForm.Designer.cs; this file only holds behaviour.
     /// </summary>
-    public partial class AuditHistoryForm : Form
+    public partial class AuditHistoryForm : Views.Main.PageHost
     {
         private readonly PatientProfileRepository _repository = new PatientProfileRepository();
         private readonly string _patientId;
@@ -18,6 +18,7 @@ namespace HospitalManagementSystem.Views.MP02_PatientSearchEditor
         public AuditHistoryForm(string patientId, string patientName)
         {
             InitializeComponent();
+            Load += (s, e) => Views.Main.PageHost.ApplyMinimum(this);   // scroll instead of squeezing on small screens
             FormHelper.Prepare(this);        // drop-down lists line up with their boxes; logo as window icon
 
             _patientId = patientId;

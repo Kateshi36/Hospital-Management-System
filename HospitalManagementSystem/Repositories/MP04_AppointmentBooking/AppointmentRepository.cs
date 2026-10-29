@@ -132,6 +132,36 @@ namespace HospitalManagementSystem.Repositories.MP04_AppointmentBooking
             return DatabaseHelper.ExecuteInTransaction((conn, tx) => LoadAvailability(conn, tx, doctorId, date));
         }
 
+        /// <summary>
+        /// The doctor's calendar hint for the booking screen: the next leave dates (from today) and the first date on or
+        /// after <paramref name="from"/> on which the doctor holds clinic and is not on leave (null when none in 90 days).
+        /// </summary>
+        public (List<(DateTime Date, string Reason)> Leaves, DateTime? NextClinicDay) GetDoctorCalendar(string doctorId, DateTime from)
+        {
+            DataTable leaves = DatabaseHelper.ExecuteQuery(
+                "SELECT leave_date, reason FROM doctor_leaves WHERE doctor_id = @id AND leave_date >= CURDATE() " +
+                "ORDER BY leave_date LIMIT 60",
+                DatabaseHelper.Param("@id", doctorId));
+            var list = leaves.Rows.Cast<DataRow>()
+                .Select(r => ((DatabaseHelper.GetNullableDate(r, "leave_date") ?? DateTime.Today).Date, DatabaseHelper.GetString(r, "reason")))
+                .ToList();
+
+            DataTable days = DatabaseHelper.ExecuteQuery(
+                "SELECT DISTINCT day_of_week FROM doctor_schedules WHERE doctor_id = @id", DatabaseHelper.Param("@id", doctorId));
+            var working = new HashSet<int>(days.Rows.Cast<DataRow>().Select(r => DatabaseHelper.GetInt(r, "day_of_week")));
+            var leaveDates = new HashSet<DateTime>(list.Select(l => l.Item1));
+
+            DateTime? next = null;
+            if (working.Count > 0)
+            {
+                for (DateTime d = (from.Date < DateTime.Today ? DateTime.Today : from.Date); d <= DateTime.Today.AddDays(90); d = d.AddDays(1))
+                {
+                    if (working.Contains((int)d.DayOfWeek) && !leaveDates.Contains(d)) { next = d; break; }
+                }
+            }
+            return (list.Take(4).ToList(), next);
+        }
+
         /// <summary>True when the patient already has a non-cancelled appointment with this doctor on this date.</summary>
         public bool PatientHasActiveAppointment(string patientId, string doctorId, DateTime date)
         {

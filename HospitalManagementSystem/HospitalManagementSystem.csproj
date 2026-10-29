@@ -21,6 +21,9 @@
 
   <ItemGroup>
     <Folder Include="Database\" />
+    <!-- Run automatically at start-up on an older database (see Helpers\SchemaUpgrader.cs). -->
+    <EmbeddedResource Include="Database\upgrade_v2.sql" />
+    <EmbeddedResource Include="Database\upgrade_v3.sql" />
   </ItemGroup>
 
   <ItemGroup>

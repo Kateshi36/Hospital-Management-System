@@ -24,6 +24,20 @@
         {
             components = new System.ComponentModel.Container();
             tlpRoot = new TableLayoutPanel();
+            tlpCoverage = new TableLayoutPanel();
+            lblCoverageTypeCap = new Label();
+            cboBillCoverage = new ComboBox();
+            lblBillCoverageNoCap = new Label();
+            txtBillCoverageNo = new TextBox();
+            lblCoverageAmountCap = new Label();
+            txtCoverageAmount = new TextBox();
+            lblBillHmoProviderCap = new Label();
+            cboBillHmoProvider = new ComboBox();
+            lblCoverageMessage = new Label();
+            lblCoverageDeductCap = new Label();
+            lblCoverageDeduct = new Label();
+            lblPatientPaysCap = new Label();
+            lblPatientPays = new Label();
             pnlTitle = new Panel();
             lblDate = new Label();
             lblTitle = new Label();
@@ -38,6 +52,7 @@
             pnlListFooter = new Panel();
             lblListCount = new Label();
             flowListActions = new FlowLayoutPanel();
+            btnVoidBill = new Button();
             btnDeleteDraft = new Button();
             btnOpenBill = new Button();
             pnlListHeader = new Panel();
@@ -62,6 +77,7 @@
             cboPatient = new ComboBox();
             lblBillCode = new Label();
             txtBillCode = new TextBox();
+            btnUnbilled = new Button();
             lblBillState = new Label();
             pnlAddCard = new Panel();
             tlpAddCard = new TableLayoutPanel();
@@ -102,6 +118,10 @@
             cboDiscountType = new ComboBox();
             lblDiscountCap = new Label();
             txtDiscount = new TextBox();
+            tlpDiscountId = new TableLayoutPanel();
+            lblDiscountIdMessage = new Label();
+            lblDiscountId = new Label();
+            txtDiscountId = new TextBox();
             tlpTotals = new TableLayoutPanel();
             lblSubtotalCap = new Label();
             lblSubtotal = new Label();
@@ -124,6 +144,7 @@
             btnNewBill = new Button();
             errorProvider = new ErrorProvider(components);
             tlpRoot.SuspendLayout();
+            tlpCoverage.SuspendLayout();
             pnlTitle.SuspendLayout();
             tlpMode.SuspendLayout();
             pnlBody.SuspendLayout();
@@ -155,6 +176,7 @@
             pnlSummaryCard.SuspendLayout();
             tlpSummary.SuspendLayout();
             tlpSummaryInputs.SuspendLayout();
+            tlpDiscountId.SuspendLayout();
             tlpTotals.SuspendLayout();
             tlpAuth.SuspendLayout();
             tlpSummaryButtons.SuspendLayout();
@@ -355,6 +377,7 @@
             flowListActions.AutoSize = true;
             flowListActions.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             flowListActions.BackColor = Color.Transparent;
+            flowListActions.Controls.Add(btnVoidBill);
             flowListActions.Controls.Add(btnDeleteDraft);
             flowListActions.Controls.Add(btnOpenBill);
             flowListActions.Dock = DockStyle.Right;
@@ -363,6 +386,19 @@
             flowListActions.Padding = new Padding(0, 9, 18, 0);
             flowListActions.TabIndex = 1;
             flowListActions.WrapContents = false;
+            // 
+            // btnVoidBill
+            // 
+            btnVoidBill.BackColor = Color.FromArgb(180, 35, 24);
+            btnVoidBill.FlatStyle = FlatStyle.Flat;
+            btnVoidBill.Font = new Font("Segoe UI Semibold", 10.5F, FontStyle.Regular, GraphicsUnit.Point, 0);
+            btnVoidBill.ForeColor = Color.White;
+            btnVoidBill.Margin = new Padding(10, 0, 0, 0);
+            btnVoidBill.Name = "btnVoidBill";
+            btnVoidBill.Size = new Size(120, 38);
+            btnVoidBill.TabIndex = 0;
+            btnVoidBill.Text = "Void Bill";
+            btnVoidBill.UseVisualStyleBackColor = false;
             // 
             // btnDeleteDraft
             // 
@@ -374,7 +410,7 @@
             btnDeleteDraft.Margin = new Padding(10, 0, 0, 0);
             btnDeleteDraft.Name = "btnDeleteDraft";
             btnDeleteDraft.Size = new Size(130, 38);
-            btnDeleteDraft.TabIndex = 0;
+            btnDeleteDraft.TabIndex = 1;
             btnDeleteDraft.Text = "Delete Draft";
             btnDeleteDraft.UseMnemonic = false;
             btnDeleteDraft.UseVisualStyleBackColor = false;
@@ -389,7 +425,7 @@
             btnOpenBill.Margin = new Padding(10, 0, 0, 0);
             btnOpenBill.Name = "btnOpenBill";
             btnOpenBill.Size = new Size(120, 38);
-            btnOpenBill.TabIndex = 1;
+            btnOpenBill.TabIndex = 2;
             btnOpenBill.Text = "Open Bill";
             btnOpenBill.UseMnemonic = false;
             btnOpenBill.UseVisualStyleBackColor = false;
@@ -550,11 +586,13 @@
             tlpBillCard.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             tlpBillCard.Controls.Add(lblBillTitle, 0, 0);
             tlpBillCard.Controls.Add(tlpBill, 0, 1);
-            tlpBillCard.Controls.Add(lblBillState, 0, 2);
+            tlpBillCard.Controls.Add(btnUnbilled, 0, 2);
+            tlpBillCard.Controls.Add(lblBillState, 0, 3);
             tlpBillCard.Dock = DockStyle.Top;
             tlpBillCard.Margin = new Padding(0);
             tlpBillCard.Name = "tlpBillCard";
-            tlpBillCard.RowCount = 3;
+            tlpBillCard.RowCount = 4;
+            tlpBillCard.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             tlpBillCard.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             tlpBillCard.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             tlpBillCard.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -705,6 +743,20 @@
             txtBillCode.Size = new Size(200, 40);
             txtBillCode.TabIndex = 5;
             // 
+            // btnUnbilled
+            // 
+            btnUnbilled.BackColor = Color.FromArgb(226, 242, 246);
+            btnUnbilled.Dock = DockStyle.Top;
+            btnUnbilled.FlatStyle = FlatStyle.Flat;
+            btnUnbilled.Font = new Font("Segoe UI Semibold", 10.5F, FontStyle.Regular, GraphicsUnit.Point, 0);
+            btnUnbilled.ForeColor = Color.FromArgb(20, 34, 51);
+            btnUnbilled.Margin = new Padding(0, 0, 0, 12);
+            btnUnbilled.Name = "btnUnbilled";
+            btnUnbilled.Size = new Size(120, 40);
+            btnUnbilled.TabIndex = 2;
+            btnUnbilled.Text = "Unbilled Charges";
+            btnUnbilled.UseVisualStyleBackColor = false;
+            // 
             // lblBillState
             // 
             lblBillState.BackColor = Color.FromArgb(255, 244, 224);
@@ -715,7 +767,7 @@
             lblBillState.Name = "lblBillState";
             lblBillState.Padding = new Padding(12, 0, 12, 0);
             lblBillState.Size = new Size(400, 36);
-            lblBillState.TabIndex = 2;
+            lblBillState.TabIndex = 3;
             lblBillState.Text = "NEW BILL  -  not saved yet";
             lblBillState.TextAlign = ContentAlignment.MiddleLeft;
             lblBillState.UseMnemonic = false;
@@ -1151,14 +1203,18 @@
             tlpSummary.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             tlpSummary.Controls.Add(lblSummaryTitle, 0, 0);
             tlpSummary.Controls.Add(tlpSummaryInputs, 0, 1);
-            tlpSummary.Controls.Add(tlpTotals, 0, 2);
-            tlpSummary.Controls.Add(lblSummaryNote, 0, 3);
-            tlpSummary.Controls.Add(tlpAuth, 0, 4);
-            tlpSummary.Controls.Add(tlpSummaryButtons, 0, 5);
+            tlpSummary.Controls.Add(tlpDiscountId, 0, 2);
+            tlpSummary.Controls.Add(tlpCoverage, 0, 3);
+            tlpSummary.Controls.Add(tlpTotals, 0, 4);
+            tlpSummary.Controls.Add(lblSummaryNote, 0, 5);
+            tlpSummary.Controls.Add(tlpAuth, 0, 6);
+            tlpSummary.Controls.Add(tlpSummaryButtons, 0, 7);
             tlpSummary.Dock = DockStyle.Top;
             tlpSummary.Margin = new Padding(0);
             tlpSummary.Name = "tlpSummary";
-            tlpSummary.RowCount = 6;
+            tlpSummary.RowCount = 8;
+            tlpSummary.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            tlpSummary.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             tlpSummary.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             tlpSummary.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             tlpSummary.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -1278,6 +1334,258 @@
             txtDiscount.Size = new Size(200, 40);
             txtDiscount.TabIndex = 5;
             // 
+            // tlpDiscountId
+            // 
+            tlpDiscountId.AutoSize = true;
+            tlpDiscountId.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            tlpDiscountId.BackColor = Color.Transparent;
+            tlpDiscountId.ColumnCount = 2;
+            tlpDiscountId.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 150F));
+            tlpDiscountId.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            tlpDiscountId.Controls.Add(lblDiscountIdMessage, 0, 0);
+            tlpDiscountId.SetColumnSpan(lblDiscountIdMessage, 2);
+            tlpDiscountId.Controls.Add(lblDiscountId, 0, 1);
+            tlpDiscountId.Controls.Add(txtDiscountId, 1, 1);
+            tlpDiscountId.Dock = DockStyle.Top;
+            tlpDiscountId.Margin = new Padding(0);
+            tlpDiscountId.Name = "tlpDiscountId";
+            tlpDiscountId.RowCount = 2;
+            tlpDiscountId.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            tlpDiscountId.RowStyles.Add(new RowStyle(SizeType.Absolute, 54F));
+            tlpDiscountId.TabIndex = 2;
+            tlpDiscountId.Visible = false;
+            // 
+            // lblDiscountIdMessage
+            // 
+            lblDiscountIdMessage.AutoSize = true;
+            lblDiscountIdMessage.BackColor = Color.Transparent;
+            lblDiscountIdMessage.Font = new Font("Segoe UI", 9.75F, FontStyle.Regular, GraphicsUnit.Point, 0);
+            lblDiscountIdMessage.ForeColor = Color.FromArgb(30, 107, 63);
+            lblDiscountIdMessage.Margin = new Padding(0, 0, 0, 8);
+            lblDiscountIdMessage.MaximumSize = new Size(700, 0);
+            lblDiscountIdMessage.Name = "lblDiscountIdMessage";
+            lblDiscountIdMessage.TabIndex = 0;
+            // 
+            // lblDiscountId
+            // 
+            lblDiscountId.AutoSize = true;
+            lblDiscountId.BackColor = Color.Transparent;
+            lblDiscountId.Font = new Font("Segoe UI Semibold", 9.75F, FontStyle.Regular, GraphicsUnit.Point, 0);
+            lblDiscountId.ForeColor = Color.FromArgb(20, 34, 51);
+            lblDiscountId.Margin = new Padding(0, 11, 8, 0);
+            lblDiscountId.Name = "lblDiscountId";
+            lblDiscountId.TabIndex = 1;
+            lblDiscountId.Text = "Senior / PWD ID no. *";
+            // 
+            // txtDiscountId
+            // 
+            txtDiscountId.AutoSize = false;
+            txtDiscountId.BackColor = Color.White;
+            txtDiscountId.BorderStyle = BorderStyle.FixedSingle;
+            txtDiscountId.Dock = DockStyle.Fill;
+            txtDiscountId.Font = new Font("Segoe UI", 10.5F, FontStyle.Regular, GraphicsUnit.Point, 0);
+            txtDiscountId.ForeColor = Color.FromArgb(20, 34, 51);
+            txtDiscountId.Margin = new Padding(0, 0, 0, 14);
+            txtDiscountId.Name = "txtDiscountId";
+            txtDiscountId.Size = new Size(200, 40);
+            txtDiscountId.TabIndex = 2;
+            // 
+            // tlpCoverage
+            // 
+            tlpCoverage.AutoSize = true;
+            tlpCoverage.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            tlpCoverage.BackColor = Color.Transparent;
+            tlpCoverage.ColumnCount = 3;
+            tlpCoverage.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.3333F));
+            tlpCoverage.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.3333F));
+            tlpCoverage.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.3333F));
+            tlpCoverage.Controls.Add(lblCoverageTypeCap, 0, 0);
+            tlpCoverage.Controls.Add(cboBillCoverage, 0, 1);
+            tlpCoverage.Controls.Add(lblBillCoverageNoCap, 1, 0);
+            tlpCoverage.Controls.Add(txtBillCoverageNo, 1, 1);
+            tlpCoverage.Controls.Add(lblCoverageAmountCap, 2, 0);
+            tlpCoverage.Controls.Add(txtCoverageAmount, 2, 1);
+            tlpCoverage.Controls.Add(lblBillHmoProviderCap, 0, 2);
+            tlpCoverage.SetColumnSpan(lblBillHmoProviderCap, 3);
+            tlpCoverage.Controls.Add(cboBillHmoProvider, 0, 3);
+            tlpCoverage.SetColumnSpan(cboBillHmoProvider, 3);
+            tlpCoverage.Controls.Add(lblCoverageMessage, 0, 4);
+            tlpCoverage.SetColumnSpan(lblCoverageMessage, 3);
+            tlpCoverage.Dock = DockStyle.Top;
+            tlpCoverage.Margin = new Padding(0);
+            tlpCoverage.Name = "tlpCoverage";
+            tlpCoverage.RowCount = 5;
+            tlpCoverage.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            tlpCoverage.RowStyles.Add(new RowStyle(SizeType.Absolute, 54F));
+            tlpCoverage.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            tlpCoverage.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            tlpCoverage.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            tlpCoverage.TabIndex = 3;
+            // 
+            // lblCoverageTypeCap
+            // 
+            lblCoverageTypeCap.AutoSize = true;
+            lblCoverageTypeCap.BackColor = Color.Transparent;
+            lblCoverageTypeCap.Font = new Font("Segoe UI Semibold", 9.75F, FontStyle.Regular, GraphicsUnit.Point, 0);
+            lblCoverageTypeCap.ForeColor = Color.FromArgb(20, 34, 51);
+            lblCoverageTypeCap.Margin = new Padding(0, 0, 6, 6);
+            lblCoverageTypeCap.Name = "lblCoverageTypeCap";
+            lblCoverageTypeCap.TabIndex = 0;
+            lblCoverageTypeCap.Text = "PhilHealth / HMO";
+            lblCoverageTypeCap.UseMnemonic = false;
+            // 
+            // cboBillCoverage
+            // 
+            cboBillCoverage.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            cboBillCoverage.DropDownStyle = ComboBoxStyle.DropDownList;
+            cboBillCoverage.Font = new Font("Segoe UI", 10.5F, FontStyle.Regular, GraphicsUnit.Point, 0);
+            cboBillCoverage.FormattingEnabled = true;
+            cboBillCoverage.Margin = new Padding(0, 0, 6, 14);
+            cboBillCoverage.Name = "cboBillCoverage";
+            cboBillCoverage.Size = new Size(200, 32);
+            cboBillCoverage.TabIndex = 1;
+            // 
+            // lblBillCoverageNoCap
+            // 
+            lblBillCoverageNoCap.AutoSize = true;
+            lblBillCoverageNoCap.BackColor = Color.Transparent;
+            lblBillCoverageNoCap.Font = new Font("Segoe UI Semibold", 9.75F, FontStyle.Regular, GraphicsUnit.Point, 0);
+            lblBillCoverageNoCap.ForeColor = Color.FromArgb(20, 34, 51);
+            lblBillCoverageNoCap.Margin = new Padding(6, 0, 6, 6);
+            lblBillCoverageNoCap.Name = "lblBillCoverageNoCap";
+            lblBillCoverageNoCap.TabIndex = 2;
+            lblBillCoverageNoCap.Text = "Member no.";
+            lblBillCoverageNoCap.UseMnemonic = false;
+            // 
+            // txtBillCoverageNo
+            // 
+            txtBillCoverageNo.AutoSize = false;
+            txtBillCoverageNo.BackColor = Color.White;
+            txtBillCoverageNo.BorderStyle = BorderStyle.FixedSingle;
+            txtBillCoverageNo.Dock = DockStyle.Fill;
+            txtBillCoverageNo.Font = new Font("Segoe UI", 10.5F, FontStyle.Regular, GraphicsUnit.Point, 0);
+            txtBillCoverageNo.ForeColor = Color.FromArgb(20, 34, 51);
+            txtBillCoverageNo.Margin = new Padding(6, 0, 6, 14);
+            txtBillCoverageNo.MaxLength = 30;
+            txtBillCoverageNo.Name = "txtBillCoverageNo";
+            txtBillCoverageNo.Size = new Size(200, 40);
+            txtBillCoverageNo.TabIndex = 3;
+            // 
+            // lblCoverageAmountCap
+            // 
+            lblCoverageAmountCap.AutoSize = true;
+            lblCoverageAmountCap.BackColor = Color.Transparent;
+            lblCoverageAmountCap.Font = new Font("Segoe UI Semibold", 9.75F, FontStyle.Regular, GraphicsUnit.Point, 0);
+            lblCoverageAmountCap.ForeColor = Color.FromArgb(20, 34, 51);
+            lblCoverageAmountCap.Margin = new Padding(6, 0, 0, 6);
+            lblCoverageAmountCap.Name = "lblCoverageAmountCap";
+            lblCoverageAmountCap.TabIndex = 4;
+            lblCoverageAmountCap.Text = "Covered amount";
+            lblCoverageAmountCap.UseMnemonic = false;
+            // 
+            // txtCoverageAmount
+            // 
+            txtCoverageAmount.AutoSize = false;
+            txtCoverageAmount.BackColor = Color.White;
+            txtCoverageAmount.BorderStyle = BorderStyle.FixedSingle;
+            txtCoverageAmount.Dock = DockStyle.Fill;
+            txtCoverageAmount.Font = new Font("Segoe UI", 10.5F, FontStyle.Regular, GraphicsUnit.Point, 0);
+            txtCoverageAmount.ForeColor = Color.FromArgb(20, 34, 51);
+            txtCoverageAmount.Margin = new Padding(6, 0, 0, 14);
+            txtCoverageAmount.MaxLength = 11;
+            txtCoverageAmount.Name = "txtCoverageAmount";
+            txtCoverageAmount.PlaceholderText = "0.00";
+            txtCoverageAmount.Size = new Size(200, 40);
+            txtCoverageAmount.TabIndex = 5;
+            // 
+            // lblBillHmoProviderCap
+            // 
+            lblBillHmoProviderCap.AutoSize = true;
+            lblBillHmoProviderCap.BackColor = Color.Transparent;
+            lblBillHmoProviderCap.Font = new Font("Segoe UI Semibold", 9.75F, FontStyle.Regular, GraphicsUnit.Point, 0);
+            lblBillHmoProviderCap.ForeColor = Color.FromArgb(20, 34, 51);
+            lblBillHmoProviderCap.Margin = new Padding(0, 0, 0, 6);
+            lblBillHmoProviderCap.Name = "lblBillHmoProviderCap";
+            lblBillHmoProviderCap.TabIndex = 6;
+            lblBillHmoProviderCap.Text = "HMO company *";
+            lblBillHmoProviderCap.Visible = false;
+            // 
+            // cboBillHmoProvider
+            // 
+            cboBillHmoProvider.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            cboBillHmoProvider.DropDownStyle = ComboBoxStyle.DropDown;
+            cboBillHmoProvider.Font = new Font("Segoe UI", 10.5F, FontStyle.Regular, GraphicsUnit.Point, 0);
+            cboBillHmoProvider.FormattingEnabled = true;
+            cboBillHmoProvider.Margin = new Padding(0, 0, 0, 14);
+            cboBillHmoProvider.Name = "cboBillHmoProvider";
+            cboBillHmoProvider.Size = new Size(200, 32);
+            cboBillHmoProvider.TabIndex = 7;
+            cboBillHmoProvider.Visible = false;
+            // 
+            // lblCoverageMessage
+            // 
+            lblCoverageMessage.AutoSize = true;
+            lblCoverageMessage.BackColor = Color.Transparent;
+            lblCoverageMessage.Font = new Font("Segoe UI", 9.75F, FontStyle.Regular, GraphicsUnit.Point, 0);
+            lblCoverageMessage.ForeColor = Color.FromArgb(30, 107, 63);
+            lblCoverageMessage.Margin = new Padding(0, 0, 0, 8);
+            lblCoverageMessage.Name = "lblCoverageMessage";
+            lblCoverageMessage.TabIndex = 8;
+            lblCoverageMessage.Text = "";
+            lblCoverageMessage.MaximumSize = new Size(700, 0);
+            // 
+            // lblCoverageDeductCap
+            // 
+            lblCoverageDeductCap.AutoSize = true;
+            lblCoverageDeductCap.BackColor = Color.Transparent;
+            lblCoverageDeductCap.Font = new Font("Segoe UI", 9F, FontStyle.Regular, GraphicsUnit.Point, 0);
+            lblCoverageDeductCap.ForeColor = Color.FromArgb(91, 107, 124);
+            lblCoverageDeductCap.Margin = new Padding(0, 8, 8, 2);
+            lblCoverageDeductCap.Name = "lblCoverageDeductCap";
+            lblCoverageDeductCap.TabIndex = 10;
+            lblCoverageDeductCap.Text = "Less PhilHealth / HMO";
+            lblCoverageDeductCap.UseMnemonic = false;
+            lblCoverageDeductCap.Visible = false;
+            // 
+            // lblCoverageDeduct
+            // 
+            lblCoverageDeduct.AutoSize = true;
+            lblCoverageDeduct.BackColor = Color.Transparent;
+            lblCoverageDeduct.Font = new Font("Segoe UI Semibold", 12.75F, FontStyle.Regular, GraphicsUnit.Point, 0);
+            lblCoverageDeduct.ForeColor = Color.FromArgb(30, 107, 63);
+            lblCoverageDeduct.Margin = new Padding(0, 0, 8, 0);
+            lblCoverageDeduct.Name = "lblCoverageDeduct";
+            lblCoverageDeduct.TabIndex = 11;
+            lblCoverageDeduct.Text = "0.00";
+            lblCoverageDeduct.UseMnemonic = false;
+            lblCoverageDeduct.Visible = false;
+            // 
+            // lblPatientPaysCap
+            // 
+            lblPatientPaysCap.AutoSize = true;
+            lblPatientPaysCap.BackColor = Color.Transparent;
+            lblPatientPaysCap.Font = new Font("Segoe UI", 9F, FontStyle.Regular, GraphicsUnit.Point, 0);
+            lblPatientPaysCap.ForeColor = Color.FromArgb(91, 107, 124);
+            lblPatientPaysCap.Margin = new Padding(0, 8, 8, 2);
+            lblPatientPaysCap.Name = "lblPatientPaysCap";
+            lblPatientPaysCap.TabIndex = 12;
+            lblPatientPaysCap.Text = "PATIENT PAYS";
+            lblPatientPaysCap.UseMnemonic = false;
+            lblPatientPaysCap.Visible = false;
+            // 
+            // lblPatientPays
+            // 
+            lblPatientPays.AutoSize = true;
+            lblPatientPays.BackColor = Color.Transparent;
+            lblPatientPays.Font = new Font("Segoe UI", 21F, FontStyle.Bold, GraphicsUnit.Point, 0);
+            lblPatientPays.ForeColor = Color.FromArgb(18, 122, 140);
+            lblPatientPays.Margin = new Padding(0, 0, 8, 0);
+            lblPatientPays.Name = "lblPatientPays";
+            lblPatientPays.TabIndex = 13;
+            lblPatientPays.Text = "0.00";
+            lblPatientPays.UseMnemonic = false;
+            lblPatientPays.Visible = false;
+            // 
             // tlpTotals
             // 
             tlpTotals.AutoSize = true;
@@ -1299,13 +1607,19 @@
             tlpTotals.Controls.Add(lblTaxAmount, 3, 1);
             tlpTotals.Controls.Add(lblGrandCap, 4, 0);
             tlpTotals.Controls.Add(lblGrandTotal, 4, 1);
+            tlpTotals.Controls.Add(lblCoverageDeductCap, 3, 2);
+            tlpTotals.Controls.Add(lblCoverageDeduct, 3, 3);
+            tlpTotals.Controls.Add(lblPatientPaysCap, 4, 2);
+            tlpTotals.Controls.Add(lblPatientPays, 4, 3);
             tlpTotals.Dock = DockStyle.Top;
             tlpTotals.Margin = new Padding(0, 0, 0, 8);
             tlpTotals.Name = "tlpTotals";
-            tlpTotals.RowCount = 2;
+            tlpTotals.RowCount = 4;
             tlpTotals.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             tlpTotals.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-            tlpTotals.TabIndex = 2;
+            tlpTotals.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            tlpTotals.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            tlpTotals.TabIndex = 3;
             // 
             // lblSubtotalCap
             // 
@@ -1435,7 +1749,7 @@
             lblSummaryNote.ForeColor = Color.FromArgb(180, 35, 24);
             lblSummaryNote.Margin = new Padding(0, 0, 0, 8);
             lblSummaryNote.Name = "lblSummaryNote";
-            lblSummaryNote.TabIndex = 3;
+            lblSummaryNote.TabIndex = 4;
             lblSummaryNote.UseMnemonic = false;
             // 
             // tlpAuth
@@ -1456,7 +1770,7 @@
             tlpAuth.RowCount = 2;
             tlpAuth.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             tlpAuth.RowStyles.Add(new RowStyle(SizeType.Absolute, 54F));
-            tlpAuth.TabIndex = 4;
+            tlpAuth.TabIndex = 5;
             tlpAuth.Visible = false;
             // 
             // lblAuthMessage
@@ -1513,7 +1827,7 @@
             tlpSummaryButtons.Name = "tlpSummaryButtons";
             tlpSummaryButtons.RowCount = 1;
             tlpSummaryButtons.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            tlpSummaryButtons.TabIndex = 5;
+            tlpSummaryButtons.TabIndex = 6;
             // 
             // btnSaveDraft
             // 
@@ -1580,6 +1894,8 @@
             Name = "BillingForm";
             tlpRoot.ResumeLayout(false);
             tlpRoot.PerformLayout();
+            tlpCoverage.ResumeLayout(false);
+            tlpCoverage.PerformLayout();
             pnlTitle.ResumeLayout(false);
             pnlTitle.PerformLayout();
             tlpMode.ResumeLayout(false);
@@ -1640,6 +1956,8 @@
             tlpSummary.PerformLayout();
             tlpSummaryInputs.ResumeLayout(false);
             tlpSummaryInputs.PerformLayout();
+            tlpDiscountId.ResumeLayout(false);
+            tlpDiscountId.PerformLayout();
             tlpTotals.ResumeLayout(false);
             tlpTotals.PerformLayout();
             tlpAuth.ResumeLayout(false);
@@ -1668,6 +1986,7 @@
         private System.Windows.Forms.Panel pnlListFooter;
         private System.Windows.Forms.Label lblListCount;
         private System.Windows.Forms.FlowLayoutPanel flowListActions;
+        private System.Windows.Forms.Button btnVoidBill;
         private System.Windows.Forms.Button btnDeleteDraft;
         private System.Windows.Forms.Button btnOpenBill;
         private System.Windows.Forms.Panel pnlListHeader;
@@ -1692,6 +2011,7 @@
         private System.Windows.Forms.ComboBox cboPatient;
         private System.Windows.Forms.Label lblBillCode;
         private System.Windows.Forms.TextBox txtBillCode;
+        private System.Windows.Forms.Button btnUnbilled;
         private System.Windows.Forms.Label lblBillState;
         private System.Windows.Forms.Panel pnlAddCard;
         private System.Windows.Forms.TableLayoutPanel tlpAddCard;
@@ -1732,6 +2052,10 @@
         private System.Windows.Forms.ComboBox cboDiscountType;
         private System.Windows.Forms.Label lblDiscountCap;
         private System.Windows.Forms.TextBox txtDiscount;
+        private System.Windows.Forms.TableLayoutPanel tlpDiscountId;
+        private System.Windows.Forms.Label lblDiscountIdMessage;
+        private System.Windows.Forms.Label lblDiscountId;
+        private System.Windows.Forms.TextBox txtDiscountId;
         private System.Windows.Forms.TableLayoutPanel tlpTotals;
         private System.Windows.Forms.Label lblSubtotalCap;
         private System.Windows.Forms.Label lblSubtotal;
@@ -1753,5 +2077,19 @@
         private System.Windows.Forms.Button btnFinalize;
         private System.Windows.Forms.Button btnNewBill;
         private System.Windows.Forms.ErrorProvider errorProvider;
+        private System.Windows.Forms.TableLayoutPanel tlpCoverage;
+        private System.Windows.Forms.Label lblCoverageTypeCap;
+        private System.Windows.Forms.ComboBox cboBillCoverage;
+        private System.Windows.Forms.Label lblBillCoverageNoCap;
+        private System.Windows.Forms.TextBox txtBillCoverageNo;
+        private System.Windows.Forms.Label lblCoverageAmountCap;
+        private System.Windows.Forms.TextBox txtCoverageAmount;
+        private System.Windows.Forms.Label lblBillHmoProviderCap;
+        private System.Windows.Forms.ComboBox cboBillHmoProvider;
+        private System.Windows.Forms.Label lblCoverageMessage;
+        private System.Windows.Forms.Label lblCoverageDeductCap;
+        private System.Windows.Forms.Label lblCoverageDeduct;
+        private System.Windows.Forms.Label lblPatientPaysCap;
+        private System.Windows.Forms.Label lblPatientPays;
     }
 }

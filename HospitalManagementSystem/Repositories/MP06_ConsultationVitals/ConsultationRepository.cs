@@ -194,7 +194,10 @@ namespace HospitalManagementSystem.Repositories.MP06_ConsultationVitals
                 DataTable saved = DatabaseHelper.ExecuteQuery(conn, tx,
                     RecordSelect + "WHERE c.consultation_id = @id",
                     DatabaseHelper.Param("@id", consultationId));
-                return ReadRecord(saved.Rows[0]);
+                ConsultationRecord record = ReadRecord(saved.Rows[0]);
+                AuditHelper.Log(conn, tx, AuditHelper.Create, AuditHelper.Consultation, consultationId, record.PatientId,
+                    $"Appointment {input.AppointmentId}: {input.Diagnosis.Trim()}");
+                return record;
             });
         }
 

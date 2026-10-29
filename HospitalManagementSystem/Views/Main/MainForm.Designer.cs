@@ -337,7 +337,7 @@
             Controls.Add(pnlSidebar);
             Font = new Font("Segoe UI", 10.5F, FontStyle.Regular, GraphicsUnit.Point, 0);
             ForeColor = Color.FromArgb(20, 34, 51);
-            MinimumSize = new Size(1100, 700);
+            MinimumSize = new Size(800, 560);
             Name = "MainForm";
             StartPosition = FormStartPosition.CenterScreen;
             Text = "Hospital Management System";

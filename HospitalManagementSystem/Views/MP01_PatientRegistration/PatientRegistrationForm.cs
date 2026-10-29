@@ -4,6 +4,7 @@ using HospitalManagementSystem.Models.Common;
 using HospitalManagementSystem.Models.MP01_PatientRegistration;
 using HospitalManagementSystem.Repositories.Common;
 using HospitalManagementSystem.Repositories.MP01_PatientRegistration;
+using HospitalManagementSystem.Views.Shared;
 
 namespace HospitalManagementSystem.Views.MP01_PatientRegistration
 {
@@ -14,7 +15,7 @@ namespace HospitalManagementSystem.Views.MP01_PatientRegistration
     ///
     /// All visuals live in PatientRegistrationForm.Designer.cs; this file only holds behaviour.
     /// </summary>
-    public partial class PatientRegistrationForm : Form
+    public partial class PatientRegistrationForm : Views.Main.PageHost
     {
         private readonly PatientRepository _patients = new PatientRepository();
         private readonly LookupRepository _lookups = new LookupRepository();
@@ -28,7 +29,8 @@ namespace HospitalManagementSystem.Views.MP01_PatientRegistration
 
             _validator = new FormValidator(errorProvider);
             _validator.AutoClear(txtFirstName, txtLastName, dtpDateOfBirth, cboGender, txtPhone, txtEmail,
-                                 txtEmergencyName, cboRelationship, txtEmergencyPhone);
+                                 txtEmergencyName, cboRelationship, txtEmergencyPhone,
+                                 cboDiscountCard, txtDiscountCardNo, cboCoverage, txtCoverageNo, cboHmoProvider);
 
             BuildGridColumns();
             GridHelper.Apply(dgvPatients);               // read-only guards + auto-size / wrap
@@ -68,6 +70,9 @@ namespace HospitalManagementSystem.Views.MP01_PatientRegistration
             InputHelper.Attach(txtPostalCode, InputKind.Digits, 4);           // PH postal code = 4 digits
             InputHelper.Attach(txtProvince, InputKind.Address, 80);
             cboCity.MaxLength = 80;                                           // editable: a new city can be typed
+            InputHelper.Attach(txtDiscountCardNo, InputKind.Address, BenefitRules.MaxCardNumber);
+            InputHelper.Attach(txtCoverageNo, InputKind.Address, BenefitRules.MaxCardNumber);
+            cboHmoProvider.MaxLength = BenefitRules.MaxProvider;              // editable: another HMO can be typed
         }
 
         // ------------------------------------------------------------------
@@ -78,7 +83,9 @@ namespace HospitalManagementSystem.Views.MP01_PatientRegistration
         {
             btnSave.Click += (s, e) => SavePatient();
             btnClear.Click += (s, e) => ClearForm();
-            dtpDateOfBirth.ValueChanged += (s, e) => UpdateAge();
+            dtpDateOfBirth.ValueChanged += (s, e) => { UpdateAge(); UpdateBenefitFields(); };
+            cboDiscountCard.SelectedIndexChanged += (s, e) => UpdateBenefitFields();
+            cboCoverage.SelectedIndexChanged += (s, e) => UpdateBenefitFields();
             cboCity.SelectedIndexChanged += (s, e) => UpdateProvince();
             dgvPatients.SelectionChanged += (s, e) => UpdateProfileCard();
             dgvPatients.CellFormatting += (s, e) =>
@@ -100,6 +107,8 @@ namespace HospitalManagementSystem.Views.MP01_PatientRegistration
                 BindCombo(cboBloodType, _lookups.GetBloodTypes());
                 BindCombo(cboCity, _lookups.GetCities());
                 BindCombo(cboRelationship, _lookups.GetRelationships());
+                BenefitFields.Bind(cboDiscountCard, cboCoverage, cboHmoProvider);
+                UpdateBenefitFields();
                 ReloadGrid(null);
                 ShowCardEmptyState();
                 txtFirstName.Focus();
@@ -140,6 +149,14 @@ namespace HospitalManagementSystem.Views.MP01_PatientRegistration
             if (cboCity.SelectedItem is LookupItem city) txtProvince.Text = city.Extra;
         }
 
+        /// <summary>Discount card / coverage: number boxes only when a card is chosen, HMO company only for an HMO.</summary>
+        private void UpdateBenefitFields()
+        {
+            DateTime? dob = dtpDateOfBirth.Checked ? dtpDateOfBirth.Value.Date : null;
+            BenefitFields.Update(cboDiscountCard, lblDiscountCardNo, txtDiscountCardNo, cboCoverage, lblCoverageNo, txtCoverageNo,
+                                 lblHmoProvider, cboHmoProvider, lblBenefitsNote, dob);
+        }
+
         // ------------------------------------------------------------------
         // Validation and saving
         // ------------------------------------------------------------------
@@ -173,6 +190,9 @@ namespace HospitalManagementSystem.Views.MP01_PatientRegistration
                 _validator.Phone(txtEmergencyPhone, "Emergency Contact Mobile Number");
             }
 
+            BenefitFields.Validate(_validator, cboDiscountCard, txtDiscountCardNo, cboCoverage, txtCoverageNo, cboHmoProvider,
+                                   dtpDateOfBirth.Checked ? dtpDateOfBirth.Value.Date : null);
+
             if (_validator.IsValid) return true;
 
             _validator.ShowErrors(this);
@@ -199,7 +219,12 @@ namespace HospitalManagementSystem.Views.MP01_PatientRegistration
                 MedicalHistory = txtMedicalHistory.Text.Trim(),
                 EmergencyContactName = txtEmergencyName.Text.Trim(),
                 EmergencyContactPhone = ToStoredPhone(txtEmergencyPhone.Text),
-                EmergencyContactRelation = ComboText(cboRelationship)
+                EmergencyContactRelation = ComboText(cboRelationship),
+                DiscountCardType = BenefitFields.Card(cboDiscountCard),
+                DiscountCardNumber = txtDiscountCardNo.Text.Trim(),
+                CoverageType = BenefitFields.Coverage(cboCoverage),
+                CoverageNumber = txtCoverageNo.Text.Trim(),
+                CoverageProvider = cboHmoProvider.Text.Trim()
             };
         }
 
@@ -240,7 +265,7 @@ namespace HospitalManagementSystem.Views.MP01_PatientRegistration
 
             foreach (TextBox box in new[] { txtFirstName, txtMiddleName, txtLastName, txtPhone, txtEmail, txtStreet,
                                             txtPostalCode, txtAllergies, txtMedicalHistory, txtEmergencyName,
-                                            txtEmergencyPhone, txtAge, txtProvince })
+                                            txtEmergencyPhone, txtAge, txtProvince, txtDiscountCardNo, txtCoverageNo })
             {
                 box.Clear();
             }
@@ -253,6 +278,10 @@ namespace HospitalManagementSystem.Views.MP01_PatientRegistration
             dtpDateOfBirth.Value = DateTime.Today;
             dtpDateOfBirth.Checked = false;
             UpdateAge();
+            if (cboDiscountCard.Items.Count > 0) cboDiscountCard.SelectedIndex = 0;
+            if (cboCoverage.Items.Count > 0) cboCoverage.SelectedIndex = 0;
+            cboHmoProvider.Text = string.Empty;
+            UpdateBenefitFields();
             txtFirstName.Focus();
         }
 
@@ -346,6 +375,7 @@ namespace HospitalManagementSystem.Views.MP01_PatientRegistration
             lblCardEmergency.Text = p.EmergencyContactName.Length > 0
                 ? $"{p.EmergencyContactName} ({p.EmergencyContactRelation})  -  {PhoneHelper.Format(p.EmergencyContactPhone)}"
                 : "-";
+            lblCardBenefits.Text = p.BenefitsText;
             lblCardRegistered.Text = p.RegisteredAt.ToString("MMMM d, yyyy  h:mm tt");
 
             lblCardEmpty.Visible = false;

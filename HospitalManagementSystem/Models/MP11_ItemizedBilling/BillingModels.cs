@@ -1,4 +1,5 @@
 ﻿using System.Globalization;
+using HospitalManagementSystem.Models.MP01_PatientRegistration;
 
 namespace HospitalManagementSystem.Models.MP11_Billing
 {
@@ -8,11 +9,32 @@ namespace HospitalManagementSystem.Models.MP11_Billing
         // bills.status
         public const string StatusDraft = "Draft";
         public const string StatusFinalized = "Finalized";
+        public const string StatusVoided = "Voided";
 
         // bills.discount_type
         public const string DiscountFlat = "Flat";
         public const string DiscountPercent = "Percent";
-        public static readonly string[] DiscountTypes = { DiscountFlat, DiscountPercent };
+        public const string DiscountSenior = "Senior Citizen";   // RA 9994: 20 % + VAT-exempt
+        public const string DiscountPwd = "PWD";                 // RA 10754: 20 % + VAT-exempt
+        public static readonly string[] DiscountTypes = { DiscountFlat, DiscountPercent, DiscountSenior, DiscountPwd };
+
+        /// <summary>True for the statutory Senior Citizen / PWD discount (fixed 20 %, no VAT, ID number required).</summary>
+        public static bool IsStatutory(string? discountType) => discountType == DiscountSenior || discountType == DiscountPwd;
+
+        /// <summary>True when the discount value is a percentage of the subtotal.</summary>
+        public static bool IsPercentType(string? discountType) => discountType == DiscountPercent || IsStatutory(discountType);
+
+        // bills.coverage_type: PhilHealth / HMO pays part of the bill (the covered amount is deducted from the total)
+        public const string CoverageNone = BenefitRules.None;
+        public const string CoveragePhilHealth = BenefitRules.PhilHealth;
+        public const string CoverageHmo = BenefitRules.Hmo;
+        public static readonly string[] CoverageTypes = { CoverageNone, CoveragePhilHealth, CoverageHmo };
+        public const decimal MaxCoverageAmount = 99999999.99m;   // bills.coverage_amount is DECIMAL(10,2)
+
+        // bill_items.source_type: where a linked charge came from
+        public const string SourceConsultation = "Consultation";
+        public const string SourceDispensing = "Dispensing";
+        public const string SourceLabOrder = "Lab Order";
 
         // bill_items.bill_category (and service_catalog.bill_category)
         public const string CategoryConsultation = "Consultation";
@@ -33,6 +55,9 @@ namespace HospitalManagementSystem.Models.MP11_Billing
         public const decimal MaxFlatDiscount = 99999999.99m;   // bills.discount_value is DECIMAL(10,2)
         public const int MaxDescription = 200;
         public const int MaxAuthorizedBy = 100;
+        public const int MaxDiscountId = 30;
+        public const int MaxVoidReason = 250;
+        public const int MinVoidReason = 5;
         public const int ListLimit = 300;
         public const int PatientListLimit = 100;
     }
@@ -45,6 +70,14 @@ namespace HospitalManagementSystem.Models.MP11_Billing
         public string Description { get; set; } = string.Empty;
         public int Quantity { get; set; } = 1;
         public decimal UnitPrice { get; set; }
+
+        /// <summary>Consultation / Dispensing / Lab Order when the charge came from that record (null = typed in the bill).</summary>
+        public string? SourceType { get; set; }
+        public string? SourceId { get; set; }
+        public bool IsLinked => !string.IsNullOrEmpty(SourceType) && !string.IsNullOrEmpty(SourceId);
+
+        /// <summary>What the "From" column shows: the consultation / lab order code, "Pharmacy" for a dispensed medicine, or "-".</summary>
+        public string SourceText => !IsLinked ? "-" : SourceType == BillingRules.SourceDispensing ? "Pharmacy" : SourceId!;
 
         /// <summary>Quantity x unit price, rounded to 2 decimals (the database computes the same value).</summary>
         public decimal Amount => BillCalculator.Round2(Quantity * UnitPrice);
@@ -59,7 +92,9 @@ namespace HospitalManagementSystem.Models.MP11_Billing
             Category = Category,
             Description = Description,
             Quantity = Quantity,
-            UnitPrice = UnitPrice
+            UnitPrice = UnitPrice,
+            SourceType = SourceType,
+            SourceId = SourceId
         };
     }
 
@@ -72,25 +107,47 @@ namespace HospitalManagementSystem.Models.MP11_Billing
         public string Status { get; set; } = BillingRules.StatusDraft;
         public string DiscountType { get; set; } = BillingRules.DiscountFlat;
         public decimal DiscountValue { get; set; }
+        public string DiscountIdNumber { get; set; } = string.Empty;   // OSCA / PWD ID (Senior Citizen / PWD only)
         public decimal TaxRate { get; set; }            // a fraction: 0.12 = 12 %
         public string AuthorizedBy { get; set; } = string.Empty;
         public DateTime CreatedAt { get; set; } = DateTime.Now;
         public DateTime? FinalizedAt { get; set; }
         public string CreatedBy { get; set; } = string.Empty;
+        public DateTime? VoidedAt { get; set; }
+        public string VoidedBy { get; set; } = string.Empty;
+        public string VoidReason { get; set; } = string.Empty;
+        public string CorrectsBillId { get; set; } = string.Empty;     // this bill replaces that voided bill
+        public string CoverageType { get; set; } = BillingRules.CoverageNone;   // None / PhilHealth / HMO
+        public string CoverageNumber { get; set; } = string.Empty;              // PhilHealth PIN / HMO card number
+        public string CoverageProvider { get; set; } = string.Empty;            // HMO company
+        public decimal CoverageAmount { get; set; }                             // deducted from the bill total
+        public bool HasCoverage => !string.IsNullOrEmpty(CoverageType) && CoverageType != BillingRules.CoverageNone;
         public List<BillItem> Items { get; set; } = new List<BillItem>();
 
         public bool IsSaved => BillId.Length > 0;
         public bool IsFinalized => Status == BillingRules.StatusFinalized;
+        public bool IsVoided => Status == BillingRules.StatusVoided;
+
+        /// <summary>Finalized or Voided: the bill can no longer be changed.</summary>
+        public bool IsLocked => IsFinalized || IsVoided;
         public decimal Subtotal => BillCalculator.Round2(Items.Sum(i => i.Amount));
     }
 
-    /// <summary>The four amounts at the bottom of a bill.</summary>
+    /// <summary>The amounts at the bottom of a bill.</summary>
     public class BillTotals
     {
         public decimal Subtotal { get; set; }
         public decimal DiscountAmount { get; set; }
         public decimal TaxableAmount { get; set; }
         public decimal TaxAmount { get; set; }
+
+        /// <summary>Taxable amount + tax: the whole bill before PhilHealth / HMO.</summary>
+        public decimal GrossTotal { get; set; }
+
+        /// <summary>What PhilHealth / HMO pays (never more than the gross total).</summary>
+        public decimal CoverageAmount { get; set; }
+
+        /// <summary>What the patient pays: gross total - coverage. Payments are recorded against this amount.</summary>
         public decimal GrandTotal { get; set; }
     }
 
@@ -101,7 +158,8 @@ namespace HospitalManagementSystem.Models.MP11_Billing
     ///   2. Discount        = flat amount, or Subtotal x percent / 100 (rounded to 2 decimals)
     ///   3. Taxable amount  = Subtotal - Discount
     ///   4. Tax             = Taxable amount x tax rate (rounded to 2 decimals)   - tax is charged AFTER the discount
-    ///   5. Grand total     = Taxable amount + Tax
+    ///   5. Gross total     = Taxable amount + Tax
+    ///   6. Grand total     = Gross total - PhilHealth / HMO coverage   (what the patient pays)
     ///
     /// The view v_bill_totals in the database uses the same order, so the screen and the reports always agree.
     ///
@@ -116,39 +174,46 @@ namespace HospitalManagementSystem.Models.MP11_Billing
 
         public static decimal DiscountAmount(decimal subtotal, string discountType, decimal discountValue)
         {
-            return discountType == BillingRules.DiscountPercent
+            return BillingRules.IsPercentType(discountType)
                 ? Round2(subtotal * discountValue / 100m)
                 : Round2(discountValue);
         }
 
-        public static BillTotals Calculate(decimal subtotal, string discountType, decimal discountValue, decimal taxRate)
+        public static BillTotals Calculate(decimal subtotal, string discountType, decimal discountValue, decimal taxRate,
+                                           decimal coverageAmount = 0m)
         {
             decimal discount = DiscountAmount(subtotal, discountType, discountValue);
             decimal taxable = subtotal - discount;
             decimal tax = Round2(taxable * taxRate);
+            decimal gross = taxable + tax;
+            decimal coverage = Math.Min(Math.Max(Round2(coverageAmount), 0m), Math.Max(gross, 0m));
             return new BillTotals
             {
                 Subtotal = subtotal,
                 DiscountAmount = discount,
                 TaxableAmount = taxable,
                 TaxAmount = tax,
-                GrandTotal = taxable + tax
+                GrossTotal = gross,
+                CoverageAmount = coverage,
+                GrandTotal = gross - coverage
             };
         }
 
         public static BillTotals Calculate(Bill bill) =>
-            Calculate(bill.Subtotal, bill.DiscountType, bill.DiscountValue, bill.TaxRate);
+            Calculate(bill.Subtotal, bill.DiscountType, bill.DiscountValue, bill.TaxRate, bill.HasCoverage ? bill.CoverageAmount : 0m);
 
         /// <summary>The discount as a percentage of the subtotal (for a percent discount: the typed value).</summary>
         public static decimal DiscountPercentOf(decimal subtotal, string discountType, decimal discountValue, decimal discountAmount)
         {
-            if (discountType == BillingRules.DiscountPercent) return discountValue;
+            if (BillingRules.IsPercentType(discountType)) return discountValue;
             return subtotal > 0 ? discountAmount / subtotal * 100m : 0m;
         }
 
         public static bool NeedsAuthorization(decimal subtotal, string discountType, decimal discountValue,
                                               decimal percentThreshold, decimal amountThreshold)
         {
+            // the Senior Citizen / PWD discount is required by law: the ID number is the proof, no authorization needed
+            if (BillingRules.IsStatutory(discountType)) return false;
             decimal amount = DiscountAmount(subtotal, discountType, discountValue);
             if (amount <= 0) return false;
             decimal percent = DiscountPercentOf(subtotal, discountType, discountValue, amount);
@@ -174,6 +239,37 @@ namespace HospitalManagementSystem.Models.MP11_Billing
         public override string ToString() => DisplayText;
     }
 
+    /// <summary>
+    /// A charge recorded in another module that is not on a bill yet (view v_unbilled_charges):
+    /// a consultation fee (MP06), a medicine dispensed with "Charge to Bill" (MP09) or a lab order (MP10).
+    /// </summary>
+    public class UnbilledCharge
+    {
+        public string SourceType { get; set; } = string.Empty;
+        public string SourceId { get; set; } = string.Empty;
+        public string Category { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
+        public int Quantity { get; set; } = 1;
+        public decimal UnitPrice { get; set; }
+        public DateTime ChargeDate { get; set; }
+
+        public decimal Amount => BillCalculator.Round2(Quantity * UnitPrice);
+        public string DateText => ChargeDate.ToString("MMM dd, yyyy  hh:mm tt", CultureInfo.InvariantCulture);
+        public string QuantityText => Quantity.ToString(CultureInfo.InvariantCulture);
+        public string UnitPriceText => UnitPrice.ToString("N2", CultureInfo.InvariantCulture);
+        public string AmountText => Amount.ToString("N2", CultureInfo.InvariantCulture);
+
+        public BillItem ToBillItem() => new BillItem
+        {
+            Category = Category,
+            Description = Description.Length > BillingRules.MaxDescription ? Description.Substring(0, BillingRules.MaxDescription) : Description,
+            Quantity = Quantity,
+            UnitPrice = UnitPrice,
+            SourceType = SourceType,
+            SourceId = SourceId
+        };
+    }
+
     /// <summary>One row of the "All Bills" list.</summary>
     public class BillListRow
     {
@@ -187,6 +283,7 @@ namespace HospitalManagementSystem.Models.MP11_Billing
         public decimal DiscountAmount { get; set; }
         public decimal TaxAmount { get; set; }
         public decimal GrandTotal { get; set; }
+        public decimal AmountPaid { get; set; }      // net of refunds
         public DateTime CreatedAt { get; set; }
 
         public string ItemCountText => ItemCount.ToString(CultureInfo.InvariantCulture);
@@ -198,7 +295,7 @@ namespace HospitalManagementSystem.Models.MP11_Billing
     }
 
     /// <summary>Which part of the screen a validation message belongs to.</summary>
-    public enum BillingField { Patient, Items, Discount, Tax, Authorization }
+    public enum BillingField { Patient, Items, Discount, Tax, Authorization, DiscountId, Coverage, CoverageNumber, CoverageProvider, CoverageAmount }
 
     /// <summary>One problem found when a bill is saved or finalized.</summary>
     public class BillingIssue

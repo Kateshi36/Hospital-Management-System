@@ -12,7 +12,7 @@ namespace HospitalManagementSystem.Views.Main
     /// the queue right now and the stock alerts. Layout lives in DashboardForm.Designer.cs; this file loads the data
     /// and builds the rows that depend on it. MainForm calls RefreshData() whenever the tab is shown.
     /// </summary>
-    public partial class DashboardForm : Form
+    public partial class DashboardForm : PageHost
     {
         private const int MaxStockRows = 6;
 
@@ -23,9 +23,15 @@ namespace HospitalManagementSystem.Views.Main
         /// <summary>Raised when the dashboard asks the main window to open a module (the "Open booking" link).</summary>
         public event Action<string>? OpenModuleRequested;
 
+        /// <summary>Raised with a patient ID picked in the dashboard search (the main window opens Patient Search &amp; Profile).</summary>
+        public event Action<string>? PatientSearchRequested;
+
+        private DashboardPatientSearch? _patientSearch;
+
         public DashboardForm()
         {
             InitializeComponent();
+            AddPatientSearchBox();
             ThemeHelper.MakeCard(pnlCardRevenue, ThemeHelper.CardRadius, ThemeHelper.Navy);   // the navy KPI card
             FormHelper.Prepare(this);
             ThemeHelper.StyleButton(btnRefresh, ButtonKind.Secondary);
@@ -47,6 +53,34 @@ namespace HospitalManagementSystem.Views.Main
             };
             pnlStockCard.Resize += (s, e) => LayoutStockRows();
             Load += (s, e) => RefreshData();
+        }
+
+        /// <summary>
+        /// The patient search box in the header (left of Refresh), for the roles that may open Patient Search &amp; Profile.
+        /// It is created before the theme runs, so it gets the same rounded input look as every other box.
+        /// </summary>
+        private void AddPatientSearchBox()
+        {
+            bool allowed = SessionManager.IsAdministrator ||
+                           SessionManager.HasRole(SessionManager.RoleReceptionist, SessionManager.RoleDoctor);
+            if (!allowed) return;
+
+            var box = new TextBox
+            {
+                Name = "txtPatientQuickSearch",
+                Font = new Font("Segoe UI", 10.5F),
+                Anchor = AnchorStyles.Bottom | AnchorStyles.Right,
+                Size = new Size(340, 40),
+                Location = new Point(btnRefresh.Left - 12 - 340, btnRefresh.Top),
+                MaxLength = 60,
+                TabIndex = 1
+            };
+            pnlHeader.Controls.Add(box);
+            box.BringToFront();
+            InputHelper.Attach(box, InputKind.Address, 60);
+
+            _patientSearch = new DashboardPatientSearch(this, box);
+            _patientSearch.PatientPicked += id => PatientSearchRequested?.Invoke(id);
         }
 
         /// <summary>Time / Patient (semibold) / Doctor / Status pill - the mockup's table.</summary>

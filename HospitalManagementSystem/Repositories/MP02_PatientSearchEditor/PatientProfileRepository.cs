@@ -2,6 +2,7 @@
 using HospitalManagementSystem.Helpers;
 using HospitalManagementSystem.Models.MP01_PatientRegistration;
 using HospitalManagementSystem.Models.MP02_PatientSearchEditor;
+using HospitalManagementSystem.Repositories.MP01_PatientRegistration;
 using MySqlConnector;
 
 namespace HospitalManagementSystem.Repositories.MP02_PatientSearchEditor
@@ -104,6 +105,18 @@ namespace HospitalManagementSystem.Repositories.MP02_PatientSearchEditor
             if (PhoneKey(original.EmergencyContactPhone) != PhoneKey(edited.EmergencyContactPhone))
                 Add("Emergency Contact Phone", PhoneHelper.Format(original.EmergencyContactPhone), PhoneHelper.Format(edited.EmergencyContactPhone));
 
+            // discount card and coverage (compared in their stored form)
+            if (PatientRepository.CardType(original) != PatientRepository.CardType(edited))
+                Add("Discount Card", PatientRepository.CardType(original), PatientRepository.CardType(edited));
+            if (Norm(PatientRepository.CardNumber(original)) != Norm(PatientRepository.CardNumber(edited)))
+                Add("Discount Card No.", PatientRepository.CardNumber(original) ?? string.Empty, PatientRepository.CardNumber(edited) ?? string.Empty);
+            if (PatientRepository.CoverageType(original) != PatientRepository.CoverageType(edited))
+                Add("Coverage", PatientRepository.CoverageType(original), PatientRepository.CoverageType(edited));
+            if (Norm(PatientRepository.CoverageNumber(original)) != Norm(PatientRepository.CoverageNumber(edited)))
+                Add("Coverage No.", PatientRepository.CoverageNumber(original) ?? string.Empty, PatientRepository.CoverageNumber(edited) ?? string.Empty);
+            if (Norm(PatientRepository.CoverageProvider(original)) != Norm(PatientRepository.CoverageProvider(edited)))
+                Add("HMO Provider", PatientRepository.CoverageProvider(original) ?? string.Empty, PatientRepository.CoverageProvider(edited) ?? string.Empty);
+
             return changes;
         }
 
@@ -156,7 +169,12 @@ namespace HospitalManagementSystem.Repositories.MP02_PatientSearchEditor
                     DatabaseHelper.Param("@history", NullIfBlank(edited.MedicalHistory)),
                     DatabaseHelper.Param("@ecName", contact ? edited.EmergencyContactName.Trim() : null),
                     DatabaseHelper.Param("@ecPhone", contact ? edited.EmergencyContactPhone : null),
-                    DatabaseHelper.Param("@ecRelation", contact ? edited.EmergencyContactRelation : null)
+                    DatabaseHelper.Param("@ecRelation", contact ? edited.EmergencyContactRelation : null),
+                    DatabaseHelper.Param("@cardType", PatientRepository.CardType(edited)),
+                    DatabaseHelper.Param("@cardNo", PatientRepository.CardNumber(edited)),
+                    DatabaseHelper.Param("@covType", PatientRepository.CoverageType(edited)),
+                    DatabaseHelper.Param("@covNo", PatientRepository.CoverageNumber(edited)),
+                    DatabaseHelper.Param("@covProvider", PatientRepository.CoverageProvider(edited))
                 };
                 if (allowDobChange) parameters.Add(DatabaseHelper.Param("@dob", edited.DateOfBirth.Date));
 
@@ -165,7 +183,10 @@ namespace HospitalManagementSystem.Repositories.MP02_PatientSearchEditor
                     "       street_address = @street, city = @city, province = @province, postal_code = @postal, " +
                     "       allergies = @allergies, medical_history = @history, " +
                     "       emergency_contact_name = @ecName, emergency_contact_phone = @ecPhone, " +
-                    "       emergency_contact_relationship = @ecRelation, last_updated_at = NOW()" + dobSql + " " +
+                    "       emergency_contact_relationship = @ecRelation, " +
+                    "       discount_card_type = @cardType, discount_card_number = @cardNo, " +
+                    "       coverage_type = @covType, coverage_number = @covNo, coverage_provider = @covProvider, " +
+                    "       last_updated_at = NOW()" + dobSql + " " +
                     "WHERE patient_id = @id",
                     parameters.ToArray());
 

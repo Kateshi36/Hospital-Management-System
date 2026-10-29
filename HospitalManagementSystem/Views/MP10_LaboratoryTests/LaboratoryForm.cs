@@ -26,7 +26,7 @@ namespace HospitalManagementSystem.Views.MP10_Laboratory
     /// Every rule lives in LaboratoryRepository / RangeEvaluator; the form shows the same rules next to the fields.
     /// All visuals live in LaboratoryForm.Designer.cs; the grid columns are created here (BuildGridColumns).
     /// </summary>
-    public partial class LaboratoryForm : Form
+    public partial class LaboratoryForm : Views.Main.PageHost
     {
         private static readonly Color AbnormalBack = ThemeHelper.DangerTint;
         private static readonly Color AbnormalFore = ThemeHelper.DangerInk;
@@ -173,6 +173,7 @@ namespace HospitalManagementSystem.Views.MP10_Laboratory
             btnCatSearch.Click += (s, e) => LoadTests();
             btnCatAll.Click += (s, e) => { txtCatSearch.Clear(); LoadTests(); };
             txtCatSearch.KeyDown += (s, e) => OnEnter(e, () => LoadTests());
+            SearchHelper.AttachLive(txtCatSearch, () => LoadTests());
             dgvTests.SelectionChanged += (s, e) => OnTestSelected();
             btnTestNew.Click += (s, e) => NewTest();
             btnTestSave.Click += (s, e) => SaveTest();
@@ -182,6 +183,7 @@ namespace HospitalManagementSystem.Views.MP10_Laboratory
             btnOrderSearch.Click += (s, e) => LoadOrders();
             btnOrderAll.Click += (s, e) => { txtOrderSearch.Clear(); LoadOrders(); };
             txtOrderSearch.KeyDown += (s, e) => OnEnter(e, () => LoadOrders());
+            SearchHelper.AttachLive(txtOrderSearch, () => LoadOrders());
             dgvOrders.SelectionChanged += (s, e) => OnOrderSelected();
             dgvOrders.CellFormatting += OnOrderCellFormatting;
             txtValue.TextChanged += (s, e) => UpdateFlag();
@@ -192,8 +194,15 @@ namespace HospitalManagementSystem.Views.MP10_Laboratory
             btnHistSearch.Click += (s, e) => LoadResults();
             btnHistAll.Click += (s, e) => { txtHistSearch.Clear(); chkAbnormalOnly.Checked = false; LoadResults(); };
             txtHistSearch.KeyDown += (s, e) => OnEnter(e, () => LoadResults());
+            SearchHelper.AttachLive(txtHistSearch, () => LoadResults());
             chkAbnormalOnly.CheckedChanged += (s, e) => { if (!_loading) LoadResults(); };
             dgvResults.SelectionChanged += (s, e) => OnResultSelected();
+            // a result the user clicks is a view of the patient's medical record (audit trail, RA 10173)
+            dgvResults.CellClick += (s, e) =>
+            {
+                if (e.RowIndex >= 0 && dgvResults.Rows[e.RowIndex].DataBoundItem is LabResultRecord r)
+                    AuditHelper.LogView(AuditHelper.LabResult, r.ResultId, r.PatientId, $"Opened the {r.TestName} result");
+            };
             dgvResults.CellFormatting += OnResultCellFormatting;
 
             VisibleChanged += (s, e) =>

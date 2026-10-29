@@ -25,6 +25,8 @@ namespace HospitalManagementSystem.Helpers
         public const string DefaultTaxRate = "default_tax_rate";
         public const string DiscountThresholdPercent = "discount_threshold_percent";
         public const string DiscountThresholdAmount = "discount_threshold_amount";
+        public const string SeniorPwdDiscountPercent = "senior_pwd_discount_percent";
+        public const string MaxConsultationFee = "max_consultation_fee";
         public const string MaxLoginAttempts = "max_login_attempts";
         public const string LockoutMinutes = "lockout_minutes";
 

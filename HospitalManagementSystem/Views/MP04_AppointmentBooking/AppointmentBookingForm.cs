@@ -31,7 +31,7 @@ namespace HospitalManagementSystem.Views.MP04_AppointmentBooking
     /// The layout lives in AppointmentBookingForm.Designer.cs; this file holds behaviour plus the runtime parts of the
     /// redesign (time-slot buttons, patient chip, button kinds).
     /// </summary>
-    public partial class AppointmentBookingForm : Form
+    public partial class AppointmentBookingForm : Views.Main.PageHost
     {
         private readonly AppointmentRepository _repository = new AppointmentRepository();
         private readonly LookupRepository _lookups = new LookupRepository();
@@ -68,6 +68,7 @@ namespace HospitalManagementSystem.Views.MP04_AppointmentBooking
             ApplyInputRules();
             WireEvents();
             Load += (s, e) => InitializeScreen();
+            AppEvents.OnDoctorsChanged(this, ReloadDoctorLists);   // a doctor was added / edited in Doctor Directory
             Disposed += (s, e) => _filterTimer.Dispose();
         }
 
@@ -160,6 +161,7 @@ namespace HospitalManagementSystem.Views.MP04_AppointmentBooking
                 e.Handled = true;
                 SearchPatients();
             };
+            SearchHelper.AttachLive(txtPatientSearch, () => { if (txtPatientSearch.Text.Trim().Length > 0) SearchPatients(); }, minLength: 2);
             dgvPatients.SelectionChanged += (s, e) => OnPatientSelectionChanged();
 
             cboSpecialization.SelectedIndexChanged += (s, e) => { if (!_loading) ReloadDoctors(); };
@@ -374,6 +376,43 @@ namespace HospitalManagementSystem.Views.MP04_AppointmentBooking
             pnlPatientChip.Visible = false;
         }
 
+        /// <summary>
+        /// Reloads the specialization list, the doctor filter and the doctor drop-down after a doctor changed in MP03,
+        /// keeping what was selected, so this tab shows the same names and specializations as the Doctor Directory.
+        /// </summary>
+        private void ReloadDoctorLists()
+        {
+            if (cboSpecialization.DataSource == null) return;   // not initialized yet
+            string? keepSpec = cboSpecialization.SelectedItem is LookupItem { HasValue: true } s ? s.Id : null;
+            string? keepFilter = cboFilterDoctor.SelectedItem is LookupItem { HasValue: true } f ? f.Id : null;
+
+            _loading = true;
+            try
+            {
+                var specializations = new List<LookupItem> { LookupItem.Placeholder("All specializations") };
+                specializations.AddRange(_lookups.GetSpecializations());
+                cboSpecialization.DataSource = specializations;
+                int specIndex = keepSpec == null ? 0 : specializations.FindIndex(x => x.HasValue && string.Equals(x.Id, keepSpec, StringComparison.OrdinalIgnoreCase));
+                cboSpecialization.SelectedIndex = specIndex < 0 ? 0 : specIndex;
+
+                var doctorFilter = new List<LookupItem> { LookupItem.Placeholder("All doctors") };
+                doctorFilter.AddRange(_repository.GetDoctors(null).Select(d => new LookupItem { Id = d.DoctorId, Name = d.DisplayName }));
+                cboFilterDoctor.DataSource = doctorFilter;
+                int filterIndex = keepFilter == null ? 0 : doctorFilter.FindIndex(x => x.Id == keepFilter);
+                cboFilterDoctor.SelectedIndex = filterIndex < 0 ? 0 : filterIndex;
+            }
+            catch (Exception ex)
+            {
+                MessageHelper.Error(ex, "The doctor lists could not be refreshed.", this);
+            }
+            finally
+            {
+                _loading = false;
+            }
+            ReloadDoctors();
+            ReloadGrid(null);
+        }
+
         // ------------------------------------------------------------------
         // Step 2 - doctor, date, slots
         // ------------------------------------------------------------------
@@ -534,16 +573,31 @@ namespace HospitalManagementSystem.Views.MP04_AppointmentBooking
             var text = new StringBuilder();
             bool warning;
 
+            // the doctor's calendar: clinic days, the next leave dates and the next open clinic day
+            List<(DateTime Date, string Reason)> leaves = new List<(DateTime, string)>();
+            DateTime? nextClinic = null;
+            try
+            {
+                (leaves, nextClinic) = _repository.GetDoctorCalendar(doctor.DoctorId, a.Date.AddDays(1));
+            }
+            catch
+            {
+                // the hint is optional; booking is checked again when saving
+            }
+            string nextText = nextClinic.HasValue
+                ? "  Next clinic day: " + nextClinic.Value.ToString("ddd, MMM d", CultureInfo.InvariantCulture) + "."
+                : string.Empty;
+
             if (a.OnLeave)
             {
-                text.Append($"{doctor.DisplayName} is on leave on {dayText} ({a.LeaveReason}). Choose another date.");
+                text.Append($"{doctor.DisplayName} is on leave on {dayText} ({a.LeaveReason}). Choose another date.{nextText}");
                 warning = true;
             }
             else if (!a.WorksThisDay)
             {
                 text.Append(a.WorkingDaysText.Length == 0
                     ? $"{doctor.DisplayName} has no weekly schedule yet. Add one under Doctor Directory & Schedule."
-                    : $"{doctor.DisplayName} does not see patients on {a.Date.DayOfWeek}s. Working days: {a.WorkingDaysText}.");
+                    : $"{doctor.DisplayName} does not see patients on {a.Date.DayOfWeek}s. Working days: {a.WorkingDaysText}.{nextText}");
                 warning = true;
             }
             else
@@ -551,8 +605,17 @@ namespace HospitalManagementSystem.Views.MP04_AppointmentBooking
                 // Open / taken counts are in the "Time slot" heading; the buttons are the open slots.
                 text.Append($"Working hours {a.WorkingHoursText}  ·  {a.Minutes}-minute visits");
                 if (a.PastCount > 0) text.Append($"  ·  {a.PastCount} already passed");
-                if (a.OpenCount == 0) text.Append("\nFully booked - no open slot left on this date.");
+                if (a.OpenCount == 0) text.Append("\nFully booked - no open slot left on this date." + nextText);
                 warning = a.OpenCount == 0;
+            }
+
+            if (a.WorkingDaysText.Length > 0)
+            {
+                text.Append($"\nClinic days: {a.WorkingDaysText}");
+                var otherLeaves = leaves.Where(l => l.Date != a.Date.Date).ToList();
+                text.Append(otherLeaves.Count == 0
+                    ? "  ·  no leave scheduled"
+                    : "  ·  On leave: " + string.Join(", ", otherLeaves.Select(l => l.Date.ToString("MMM d", CultureInfo.InvariantCulture))));
             }
 
             if (_selectedPatientId is string patientId && !a.OnLeave)

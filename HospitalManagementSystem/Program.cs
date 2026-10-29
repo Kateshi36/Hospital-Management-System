@@ -1,4 +1,4 @@
-using HospitalManagementSystem.Config;
+﻿using HospitalManagementSystem.Config;
 using HospitalManagementSystem.Helpers;
 using HospitalManagementSystem.Views.Auth;
 using HospitalManagementSystem.Views.Main;
@@ -32,6 +32,10 @@ namespace HospitalManagementSystem
                 MessageHelper.Error(ex.Message, "Configuration error");
                 return;
             }
+
+            // An older database (made with the first schema.sql) is upgraded in place - no data is removed.
+            string? upgradeProblem = SchemaUpgrader.EnsureUpToDate();
+            if (upgradeProblem != null) MessageHelper.Warning(upgradeProblem, "Database upgrade");
 
             bool showLogin = true;
             while (showLogin)

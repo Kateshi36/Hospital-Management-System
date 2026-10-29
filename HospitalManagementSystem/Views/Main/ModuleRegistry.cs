@@ -12,6 +12,7 @@ using HospitalManagementSystem.Views.MP10_Laboratory;
 using HospitalManagementSystem.Views.MP11_Billing;
 using HospitalManagementSystem.Views.MP12_Payment;
 using HospitalManagementSystem.Views.Shared;
+using HospitalManagementSystem.Views.Admin;
 
 namespace HospitalManagementSystem.Views.Main
 {
@@ -51,6 +52,9 @@ namespace HospitalManagementSystem.Views.Main
         private static readonly string[] Pharmacy = { SessionManager.RolePharmacist };
         private static readonly string[] Lab = { SessionManager.RoleLabTechnician, SessionManager.RoleDoctor };
         private static readonly string[] Billing = { SessionManager.RoleCashier };
+        private static readonly string[] AdminOnly = { SessionManager.RoleAdministrator };
+
+        public const string AuditTrailKey = "AUDIT";
 
         private static readonly List<ModuleInfo> Modules = new List<ModuleInfo>
         {
@@ -65,7 +69,8 @@ namespace HospitalManagementSystem.Views.Main
             new ModuleInfo("MP09", "Medicine Dispensing", Pharmacy, () => new DispensingForm()),
             new ModuleInfo("MP10", "Laboratory", Lab, () => new LaboratoryForm()),
             new ModuleInfo("MP11", "Itemized Billing", Billing, () => new BillingForm()),
-            new ModuleInfo("MP12", "Payments & Receipts", Billing, () => new PaymentForm())
+            new ModuleInfo("MP12", "Payments & Receipts", Billing, () => new PaymentForm()),
+            new ModuleInfo(AuditTrailKey, "Audit Trail", AdminOnly, () => new AuditTrailForm())
         };
 
         public static IReadOnlyList<ModuleInfo> All => Modules;

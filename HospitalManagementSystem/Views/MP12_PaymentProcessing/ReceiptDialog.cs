@@ -20,7 +20,7 @@ namespace HospitalManagementSystem.Views.MP12_Payment
             InitializeComponent();
             FormHelper.Prepare(this);        // drop-down lists line up with their boxes; logo as window icon
             btnClose.Click += (s, e) => DialogResult = DialogResult.OK;
-            Text = "Official Receipt " + receipt.PaymentId;
+            Text = (receipt.IsRefund ? "Refund Receipt " : "Official Receipt ") + receipt.PaymentId;
             Build(receipt);
         }
 
@@ -29,24 +29,35 @@ namespace HospitalManagementSystem.Views.MP12_Payment
             rtbReceipt.Clear();
 
             Write(SettingsHelper.GetString(SettingsHelper.HospitalName, "Hospital Management System").ToUpperInvariant() + "\n", 16, true, false, HorizontalAlignment.Center, 140);
-            Write("OFFICIAL RECEIPT\n", 13, true, false, HorizontalAlignment.Center, 140);
+            Write(r.IsRefund ? "REFUND RECEIPT\n" : "OFFICIAL RECEIPT\n", 13, true, false, HorizontalAlignment.Center, 140);
             Write(r.PaymentId + "\n\n", 11, false, false, HorizontalAlignment.Center, 140);
 
             Field("Date", r.PaidAt.ToString("MMM dd, yyyy  hh:mm tt", System.Globalization.CultureInfo.InvariantCulture));
-            Field("Received from", r.PatientName);
+            Field(r.IsRefund ? "Refunded to" : "Received from", r.PatientName);
             Field("Patient ID", r.PatientId);
             Field("Bill", r.BillId);
+            if (r.IsRefund) Field("Refund of", r.RefundOfPaymentId);
 
-            Write("\nPAYMENT\n", 11, true, false, HorizontalAlignment.Left, 340);
+            Write(r.IsRefund ? "\nREFUND\n" : "\nPAYMENT\n", 11, true, false, HorizontalAlignment.Left, 340);
             Write(Rule, 9, false, false, HorizontalAlignment.Left, 340, Gray);
             Line("Bill total", Money(r.BillTotal), false);
-            Line("Paid before this payment", Money(r.PaidBefore), false);
-            Line("AMOUNT PAID NOW", Money(r.AmountPaid), true);
-            Line("Balance after this payment", Money(r.NewBalance), false);
+            if (r.IsRefund)
+            {
+                Line("Paid before this refund", Money(r.PaidBefore), false);
+                Line("AMOUNT REFUNDED", Money(r.AmountPaid), true);
+                Line("Balance after this refund", Money(r.NewBalance), false);
+            }
+            else
+            {
+                Line("Paid before this payment", Money(r.PaidBefore), false);
+                Line("AMOUNT PAID NOW", Money(r.AmountPaid), true);
+                Line("Balance after this payment", Money(r.NewBalance), false);
+            }
             Write(Rule, 9, false, false, HorizontalAlignment.Left, 340, Gray);
 
             Write("\n", 6, false, false, HorizontalAlignment.Left, 340);
-            Field("Payment method", r.MethodName);
+            Field(r.IsRefund ? "Refunded by" : "Payment method", r.MethodName);
+            if (r.IsRefund && !string.IsNullOrWhiteSpace(r.Remarks)) Field("Reason", r.Remarks);
             if (!string.IsNullOrWhiteSpace(r.ReferenceNumber)) Field("Reference no.", r.ReferenceNumber);
             if (r.Tendered.HasValue)
             {
@@ -57,8 +68,9 @@ namespace HospitalManagementSystem.Views.MP12_Payment
             Write("\nStatus of the bill:  " + r.StatusAfter + "\n", 11, true, false, HorizontalAlignment.Left, 340);
 
             Write("\n\n______________________________\n", 10, false, false, HorizontalAlignment.Right, 140);
-            Write("Received by " + (string.IsNullOrEmpty(r.ReceivedBy) ? "-" : r.ReceivedBy) + "\n", 10, true, false, HorizontalAlignment.Right, 140);
-            Write("Thank you. Please keep this receipt as proof of payment.\n", 9, false, true, HorizontalAlignment.Right, 140, Gray);
+            Write((r.IsRefund ? "Refunded by " : "Received by ") + (string.IsNullOrEmpty(r.ReceivedBy) ? "-" : r.ReceivedBy) + "\n", 10, true, false, HorizontalAlignment.Right, 140);
+            Write(r.IsRefund ? "Patient's signature: ______________________\n"
+                             : "Thank you. Please keep this receipt as proof of payment.\n", 9, false, true, HorizontalAlignment.Right, 140, Gray);
 
             rtbReceipt.SelectionStart = 0;
             rtbReceipt.SelectionLength = 0;

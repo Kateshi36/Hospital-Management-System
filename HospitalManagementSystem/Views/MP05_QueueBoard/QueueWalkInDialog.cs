@@ -43,6 +43,7 @@ namespace HospitalManagementSystem.Views.MP05_QueueBoard
                 e.Handled = true;
                 Search();
             };
+            SearchHelper.AttachLive(txtSearch, () => { if (txtSearch.Text.Trim().Length > 0) Search(); }, minLength: 2);
             dgvPatients.SelectionChanged += (s, e) => ShowSelection();
             dgvPatients.CellDoubleClick += (s, e) => { if (e.RowIndex >= 0) Confirm(); };
             btnAdd.Click += (s, e) => Confirm();

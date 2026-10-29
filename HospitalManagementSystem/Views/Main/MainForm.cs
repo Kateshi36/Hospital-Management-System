@@ -19,13 +19,18 @@ namespace HospitalManagementSystem.Views.Main
         private const int TabMinWidth = 110;   // below this the tabs stop shrinking and the < > buttons appear
         private const int TabGap = 4;
 
+        // The window itself may be as small as 800 x 560 (MainForm.Designer.cs): on a 1366 x 768 laptop at 125 % the screen
+        // is only about 1093 x 582 design pixels, and a larger minimum would push the bottom of every page off the screen.
+        // Each page then scrolls instead (PageHost.ApplyMinimum).
+
         /// <summary>The sidebar sections in mockup order: caption and the module keys under it.</summary>
         private static readonly (string Caption, string[] Keys)[] Sections =
         {
             ("PATIENTS & REGISTRATION", new[] { "MP01", "MP02" }),
             ("DOCTORS & APPOINTMENTS", new[] { "MP03", "MP04", "MP05" }),
             ("CLINICAL", new[] { "MP06", "MP07", "MP10" }),
-            ("PHARMACY & BILLING", new[] { "MP08", "MP09", "MP11", "MP12" })
+            ("PHARMACY & BILLING", new[] { "MP08", "MP09", "MP11", "MP12" }),
+            ("ADMINISTRATION", new[] { ModuleRegistry.AuditTrailKey })
         };
 
         private sealed class TabEntry
@@ -147,6 +152,7 @@ namespace HospitalManagementSystem.Views.Main
             {
                 LayoutMenu();
                 LayoutTabs(true);
+                foreach (TabEntry tab in _tabs.Values) PageHost.ApplyMinimum(tab.Form);
             }));
 
             pnlMenu.Resize += (s, e) => LayoutMenu();
@@ -447,6 +453,7 @@ namespace HospitalManagementSystem.Views.Main
         {
             _dashboard = new DashboardForm();
             _dashboard.OpenModuleRequested += OpenModule;
+            _dashboard.PatientSearchRequested += OpenPatientSearch;
             EmbedForm(_dashboard);
             CreateTab(DashboardKey, "Dashboard", _dashboard, closable: false);
             ActivateTab(DashboardKey);
@@ -482,7 +489,18 @@ namespace HospitalManagementSystem.Views.Main
             }
         }
 
-        /// <summary>Makes a form behave like a page inside the content area (no border, fills the tab).</summary>
+        /// <summary>Opens Patient Search & Profile (or switches to it) and shows the patient picked in the dashboard search.</summary>
+        private void OpenPatientSearch(string patientId)
+        {
+            OpenModule("MP02");
+            if (_tabs.TryGetValue("MP02", out TabEntry? tab) && tab.Form is Views.MP02_PatientSearchEditor.PatientSearchForm search)
+                search.ShowPatient(patientId);
+        }
+
+        /// <summary>
+        /// Makes a form behave like a page inside the content area: no border, fills the tab, and scrolls when the window
+        /// is smaller than the page's minimum size (PageHost.ApplyMinimum).
+        /// </summary>
         private void EmbedForm(Form form)
         {
             form.TopLevel = false;
@@ -491,6 +509,7 @@ namespace HospitalManagementSystem.Views.Main
             form.Dock = DockStyle.Fill;
             pnlContent.Controls.Add(form);
             form.Show();
+            PageHost.ApplyMinimum(form);
         }
 
         private TabEntry CreateTab(string key, string title, Form form, bool closable)

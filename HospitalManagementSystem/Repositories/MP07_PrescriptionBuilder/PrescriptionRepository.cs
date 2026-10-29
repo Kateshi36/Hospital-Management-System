@@ -207,6 +207,11 @@ namespace HospitalManagementSystem.Repositories.MP07_Prescription
                     DatabaseHelper.Param("@id", id));
                 PrescriptionRecord record = ReadHeader(header.Rows[0]);
                 record.Lines = ReadLines(DatabaseHelper.ExecuteQuery(conn, tx, LineSelect, DatabaseHelper.Param("@id", id)));
+
+                AuditHelper.Log(conn, tx, AuditHelper.Create, AuditHelper.Prescription, id, record.PatientId,
+                    $"Consultation {input.ConsultationId}: " + string.Join(", ", input.Lines.Select(l =>
+                        $"{l.MedicineName} {l.Dosage.Trim()} {l.FrequencyPerDay}x/day for {l.DurationDays} day(s)")) +
+                    $"; valid until {input.ValidUntil:yyyy-MM-dd}");
                 return record;
             });
         }

@@ -19,13 +19,15 @@ namespace HospitalManagementSystem.Views.MP12_Payment
     ///     STATUS TRANSITION (derived, never stored): Outstanding -> Partially Paid -> Fully Paid.
     ///
     ///   BILLING RECORDS
-    ///     every finalized bill with its totals and payment status, filtered by search text, bill date range and status;
-    ///     select a bill to see its payments and reprint any receipt.
+    ///     every finalized (and voided) bill with its totals and payment status, filtered by search text, bill date range and
+    ///     status; select a bill to see its payments and refunds, reprint any receipt, or REFUND a payment.
+    ///     A payment is never edited or deleted: a refund is a separate reversing entry (RFD-YYYYMMDD-XXX) with its reason and
+    ///     its own receipt, and the balance and status of the bill follow automatically.
     ///
     /// The rules live in PaymentRepository.Validate (and are checked again inside the save transaction); this form shows the
     /// same messages next to the fields. All visuals live in PaymentForm.Designer.cs; the grid columns are created here.
     /// </summary>
-    public partial class PaymentForm : Form
+    public partial class PaymentForm : Views.Main.PageHost
     {
         private static readonly Color ErrorFore = ThemeHelper.Danger;
         private static readonly Color MutedFore = ThemeHelper.TextMuted;
@@ -62,6 +64,8 @@ namespace HospitalManagementSystem.Views.MP12_Payment
             GridHelper.Apply(dgvRecHistory);
             GridHelper.EnableStatusColoring(dgvPayable, "colPStatus");
             GridHelper.EnableStatusColoring(dgvRecords, "colRStatus");
+            GridHelper.EnableStatusColoring(dgvHistory, "colHType");
+            GridHelper.EnableStatusColoring(dgvRecHistory, "colQType");
 
             ApplyInputRules();
             WireEvents();
@@ -94,11 +98,12 @@ namespace HospitalManagementSystem.Views.MP12_Payment
             AddColumn(dgvPayable, "colPBalance", "Balance", nameof(PayableBill.BalanceText), 14, true);
             AddColumn(dgvPayable, "colPStatus", "Status", nameof(PayableBill.PaymentStatus), 16);
 
-            AddColumn(dgvHistory, "colHCode", "Receipt no.", nameof(PaymentRecord.PaymentId), 26);
-            AddColumn(dgvHistory, "colHDate", "Paid on", nameof(PaymentRecord.PaidAtText), 28);
-            AddColumn(dgvHistory, "colHMethod", "Method", nameof(PaymentRecord.MethodName), 14);
-            AddColumn(dgvHistory, "colHReference", "Reference", nameof(PaymentRecord.ReferenceText), 16);
-            AddColumn(dgvHistory, "colHAmount", "Amount", nameof(PaymentRecord.AmountText), 16, true);
+            AddColumn(dgvHistory, "colHCode", "Receipt no.", nameof(PaymentRecord.PaymentId), 22);
+            AddColumn(dgvHistory, "colHDate", "Paid on", nameof(PaymentRecord.PaidAtText), 24);
+            AddColumn(dgvHistory, "colHType", "Type", nameof(PaymentRecord.TypeText), 18);
+            AddColumn(dgvHistory, "colHMethod", "Method", nameof(PaymentRecord.MethodName), 11);
+            AddColumn(dgvHistory, "colHReference", "Reference", nameof(PaymentRecord.ReferenceText), 13);
+            AddColumn(dgvHistory, "colHAmount", "Amount", nameof(PaymentRecord.AmountText), 13, true);
 
             AddColumn(dgvRecords, "colRCode", "Bill ID", nameof(PayableBill.BillId), 17);
             AddColumn(dgvRecords, "colRPatient", "Patient", nameof(PayableBill.PatientName), 24);
@@ -108,13 +113,13 @@ namespace HospitalManagementSystem.Views.MP12_Payment
             AddColumn(dgvRecords, "colRBalance", "Balance", nameof(PayableBill.BalanceText), 13, true);
             AddColumn(dgvRecords, "colRStatus", "Payment status", nameof(PayableBill.PaymentStatus), 14);
 
-            AddColumn(dgvRecHistory, "colQCode", "Receipt no.", nameof(PaymentRecord.PaymentId), 18);
-            AddColumn(dgvRecHistory, "colQDate", "Paid on", nameof(PaymentRecord.PaidAtText), 20);
-            AddColumn(dgvRecHistory, "colQMethod", "Method", nameof(PaymentRecord.MethodName), 11);
-            AddColumn(dgvRecHistory, "colQReference", "Reference", nameof(PaymentRecord.ReferenceText), 15);
-            AddColumn(dgvRecHistory, "colQAmount", "Amount", nameof(PaymentRecord.AmountText), 12, true);
-            AddColumn(dgvRecHistory, "colQTendered", "Tendered", nameof(PaymentRecord.TenderedText), 12, true);
-            AddColumn(dgvRecHistory, "colQReceivedBy", "Received by", nameof(PaymentRecord.ReceivedBy), 18);
+            AddColumn(dgvRecHistory, "colQCode", "Receipt no.", nameof(PaymentRecord.PaymentId), 16);
+            AddColumn(dgvRecHistory, "colQDate", "Paid on", nameof(PaymentRecord.PaidAtText), 18);
+            AddColumn(dgvRecHistory, "colQType", "Type", nameof(PaymentRecord.TypeText), 16);
+            AddColumn(dgvRecHistory, "colQMethod", "Method", nameof(PaymentRecord.MethodName), 9);
+            AddColumn(dgvRecHistory, "colQReference", "Reference / reason", nameof(PaymentRecord.ReferenceText), 17);
+            AddColumn(dgvRecHistory, "colQAmount", "Amount", nameof(PaymentRecord.AmountText), 10, true);
+            AddColumn(dgvRecHistory, "colQReceivedBy", "By", nameof(PaymentRecord.ReceivedBy), 14);
         }
 
         private static void AddColumn(DataGridView grid, string name, string header, string property, float weight, bool right = false)
@@ -155,6 +160,7 @@ namespace HospitalManagementSystem.Views.MP12_Payment
             btnBillSearch.Click += (s, e) => LoadPayable(_selected?.BillId);
             btnBillAll.Click += (s, e) => { txtBillSearch.Clear(); LoadPayable(_selected?.BillId); };
             txtBillSearch.KeyDown += (s, e) => OnEnter(e, () => LoadPayable(_selected?.BillId));
+            SearchHelper.AttachLive(txtBillSearch, () => LoadPayable(_selected?.BillId));
             dgvPayable.SelectionChanged += (s, e) => { if (!_loading) OnPayableSelected(); };
             dgvHistory.SelectionChanged += (s, e) => btnViewReceipt.Enabled = dgvHistory.CurrentRow?.DataBoundItem is PaymentRecord;
             dgvHistory.CellDoubleClick += (s, e) => { if (e.RowIndex >= 0) ViewReceipt(dgvHistory); };
@@ -172,9 +178,11 @@ namespace HospitalManagementSystem.Views.MP12_Payment
             btnRecSearch.Click += (s, e) => LoadRecords();
             btnRecAll.Click += (s, e) => ResetRecordFilters();
             txtRecSearch.KeyDown += (s, e) => OnEnter(e, () => LoadRecords());
+            SearchHelper.AttachLive(txtRecSearch, () => LoadRecords());
             cboRecStatus.SelectedIndexChanged += (s, e) => { if (!_loading && _initialized) LoadRecords(); };
             dgvRecords.SelectionChanged += (s, e) => { if (!_loading) OnRecordSelected(); };
-            dgvRecHistory.SelectionChanged += (s, e) => btnReprint.Enabled = dgvRecHistory.CurrentRow?.DataBoundItem is PaymentRecord;
+            dgvRecHistory.SelectionChanged += (s, e) => UpdateRecHistoryButtons();
+            btnRefund.Click += (s, e) => RefundSelectedPayment();
             dgvRecHistory.CellDoubleClick += (s, e) => { if (e.RowIndex >= 0) ViewReceipt(dgvRecHistory); };
             btnReprint.Click += (s, e) => ViewReceipt(dgvRecHistory);
 
@@ -212,7 +220,7 @@ namespace HospitalManagementSystem.Views.MP12_Payment
                 cboMethod.SelectedIndex = 0;
 
                 cboRecStatus.Items.Clear();
-                cboRecStatus.Items.AddRange(new object[] { "All statuses", "Outstanding (unpaid)", "Partially Paid", "Fully Paid" });
+                cboRecStatus.Items.AddRange(new object[] { "All statuses", "Outstanding (unpaid)", "Partially Paid", "Fully Paid", "Voided" });
                 cboRecStatus.SelectedIndex = 0;
             }
             catch (Exception ex)
@@ -340,7 +348,9 @@ namespace HospitalManagementSystem.Views.MP12_Payment
                     ? "Select a bill on the list."
                     : _history.Count == 0
                         ? "No payment has been made on this bill yet."
-                        : $"{_history.Count} payment(s)  -  paid {Money(_history.Sum(p => p.Amount))}";
+                        : $"{_history.Count(p => !p.IsRefund)} payment(s)" +
+                          (_history.Any(p => p.IsRefund) ? $", {_history.Count(p => p.IsRefund)} refund(s)" : string.Empty) +
+                          $"  -  paid {Money(_selected.AmountPaid)}";
             }
             catch (Exception ex)
             {
@@ -575,6 +585,7 @@ namespace HospitalManagementSystem.Views.MP12_Payment
             1 => PaymentRules.Outstanding,
             2 => PaymentRules.PartiallyPaid,
             3 => PaymentRules.FullyPaid,
+            4 => PaymentRules.Voided,
             _ => null
         };
 
@@ -634,6 +645,47 @@ namespace HospitalManagementSystem.Views.MP12_Payment
             }
         }
 
+        private void UpdateRecHistoryButtons()
+        {
+            var payment = dgvRecHistory.CurrentRow?.DataBoundItem as PaymentRecord;
+            var bill = dgvRecords.CurrentRow?.DataBoundItem as PayableBill;
+            btnReprint.Enabled = payment != null;
+            btnRefund.Enabled = payment != null && !payment.IsRefund && payment.Refundable > 0 && bill != null && !bill.IsVoided;
+        }
+
+        /// <summary>Refunds (part of) the selected payment as a separate reversing entry, then shows the refund receipt.</summary>
+        private void RefundSelectedPayment()
+        {
+            if (dgvRecHistory.CurrentRow?.DataBoundItem is not PaymentRecord payment) return;
+            if (dgvRecords.CurrentRow?.DataBoundItem is not PayableBill bill) return;
+            if (payment.IsRefund || payment.Refundable <= 0 || bill.IsVoided) return;
+
+            using var dialog = new RefundDialog(payment, bill.BillId, bill.PatientName);
+            if (dialog.ShowDialog(DialogOwner()) != DialogResult.OK) return;
+
+            string question = $"Refund {Money(dialog.Input.Amount)} of payment {payment.PaymentId} ({payment.MethodName})\n" +
+                              $"to {bill.PatientName} on bill {bill.BillId}?\n\nReason: {dialog.Input.Reason}\n\n" +
+                              "This cannot be undone. The refund gets its own receipt and the bill's balance goes up by the same amount.";
+            if (!MessageHelper.Confirm(question, "Confirm refund", DialogOwner())) return;
+
+            try
+            {
+                Receipt receipt = _repository.RecordRefund(dialog.Input);
+                LoadRecords();
+                SetStatus($"Refund {receipt.PaymentId} of {Money(receipt.AmountPaid)} recorded for {receipt.BillId}  -  {receipt.StatusAfter}.", OkFore);
+                ShowReceipt(receipt);
+            }
+            catch (InvalidOperationException ex)
+            {
+                MessageHelper.Warning(ex.Message, "The refund was not recorded", DialogOwner());
+                LoadRecords();
+            }
+            catch (Exception ex)
+            {
+                MessageHelper.Error(ex, "The refund could not be saved.", DialogOwner());
+            }
+        }
+
         private void OnRecordSelected()
         {
             var bill = dgvRecords.CurrentRow?.DataBoundItem as PayableBill;
@@ -644,13 +696,15 @@ namespace HospitalManagementSystem.Views.MP12_Payment
                 dgvRecHistory.DataSource = _recHistory;
                 dgvRecHistory.ClearSelection();
                 if (_recHistory.Count > 0) dgvRecHistory.CurrentCell = GridHelper.FirstVisibleCell(dgvRecHistory.Rows[_recHistory.Count - 1]);
-                btnReprint.Enabled = _recHistory.Count > 0;
+                UpdateRecHistoryButtons();
 
                 lblRecHistoryInfo.Text = bill == null
                     ? "Select a bill to see its payments."
                     : _recHistory.Count == 0
-                        ? bill.BillId + ": no payment has been made yet."
-                        : $"{bill.BillId}: {_recHistory.Count} payment(s), paid {Money(bill.AmountPaid)} of {Money(bill.GrandTotal)}.";
+                        ? bill.BillId + (bill.IsVoided ? ": voided, no payment was made." : ": no payment has been made yet.")
+                        : $"{bill.BillId}: {_recHistory.Count(p => !p.IsRefund)} payment(s)" +
+                          (bill.AmountRefunded > 0 ? $", refunded {Money(bill.AmountRefunded)}" : string.Empty) +
+                          (bill.IsVoided ? "  -  bill VOIDED" : $", net paid {Money(bill.AmountPaid)} of {Money(bill.GrandTotal)}.");
             }
             catch (Exception ex)
             {

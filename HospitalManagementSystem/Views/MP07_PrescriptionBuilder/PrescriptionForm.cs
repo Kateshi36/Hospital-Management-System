@@ -22,7 +22,7 @@ namespace HospitalManagementSystem.Views.MP07_Prescription
     /// Every rule lives in PrescriptionRepository (Validate and Save); the form shows the same rules next to the fields.
     /// All visuals live in PrescriptionForm.Designer.cs; the grid columns are created here (BuildGridColumns).
     /// </summary>
-    public partial class PrescriptionForm : Form
+    public partial class PrescriptionForm : Views.Main.PageHost
     {
         private readonly PrescriptionRepository _repository = new PrescriptionRepository();
         private readonly FormValidator _validator;
@@ -120,6 +120,7 @@ namespace HospitalManagementSystem.Views.MP07_Prescription
 
             btnConsultSearch.Click += (s, e) => LoadConsultations();
             txtConsultSearch.KeyDown += (s, e) => OnEnter(e, LoadConsultations);
+            SearchHelper.AttachLive(txtConsultSearch, LoadConsultations);
             dgvConsultations.SelectionChanged += (s, e) => OnConsultationSelected();
 
             cboMedicine.SelectedIndexChanged += (s, e) => { if (!_loading) UpdateStockHint(); };
@@ -140,6 +141,7 @@ namespace HospitalManagementSystem.Views.MP07_Prescription
             btnIssuedSearch.Click += (s, e) => LoadIssued();
             btnIssuedAll.Click += (s, e) => { txtIssuedSearch.Clear(); LoadIssued(); };
             txtIssuedSearch.KeyDown += (s, e) => OnEnter(e, LoadIssued);
+            SearchHelper.AttachLive(txtIssuedSearch, LoadIssued);
             dgvIssued.SelectionChanged += (s, e) => btnPreview.Enabled = dgvIssued.SelectedRows.Count > 0;
             dgvIssued.CellDoubleClick += (s, e) => { if (e.RowIndex >= 0) PreviewSelected(); };
             btnPreview.Click += (s, e) => PreviewSelected();
@@ -586,6 +588,7 @@ namespace HospitalManagementSystem.Views.MP07_Prescription
                     LoadIssued();
                     return;
                 }
+                AuditHelper.LogView(AuditHelper.Prescription, full.PrescriptionId, full.PatientId, "Opened the prescription");
                 using var preview = new PrescriptionPreviewDialog(full);
                 preview.ShowDialog(DialogOwner());
             }

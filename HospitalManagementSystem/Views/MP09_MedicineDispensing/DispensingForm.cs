@@ -24,7 +24,7 @@ namespace HospitalManagementSystem.Views.MP09_Dispensing
     /// Every rule lives in DispensingRepository (Validate and Dispense); the form shows the same rules next to the fields.
     /// All visuals live in DispensingForm.Designer.cs; the grid columns are created here (BuildGridColumns).
     /// </summary>
-    public partial class DispensingForm : Form
+    public partial class DispensingForm : Views.Main.PageHost
     {
         private const int StepCount = 3;
 
@@ -148,6 +148,7 @@ namespace HospitalManagementSystem.Views.MP09_Dispensing
             btnRxSearch.Click += (s, e) => LoadPrescriptions();
             btnRxAll.Click += (s, e) => { txtRxSearch.Clear(); chkOpenOnly.Checked = false; LoadPrescriptions(); };
             txtRxSearch.KeyDown += (s, e) => OnEnter(e, () => LoadPrescriptions());
+            SearchHelper.AttachLive(txtRxSearch, () => LoadPrescriptions());
             chkOpenOnly.CheckedChanged += (s, e) => { if (_initialized && !_loading) LoadPrescriptions(); };
             dgvPrescriptions.SelectionChanged += (s, e) => { if (!_loading) OnPrescriptionSelected(); };
             dgvPrescriptions.CellDoubleClick += (s, e) => { if (e.RowIndex >= 0) GoNext(); };
@@ -168,6 +169,7 @@ namespace HospitalManagementSystem.Views.MP09_Dispensing
             btnHistSearch.Click += (s, e) => LoadHistory();
             btnHistAll.Click += (s, e) => { txtHistSearch.Clear(); LoadHistory(); };
             txtHistSearch.KeyDown += (s, e) => OnEnter(e, () => LoadHistory());
+            SearchHelper.AttachLive(txtHistSearch, () => LoadHistory());
             dgvHistory.SelectionChanged += (s, e) => btnViewSlip.Enabled = dgvHistory.SelectedRows.Count > 0;
             dgvHistory.CellDoubleClick += (s, e) => { if (e.RowIndex >= 0) ViewSelectedSlip(); };
             btnViewSlip.Click += (s, e) => ViewSelectedSlip();
@@ -599,7 +601,10 @@ namespace HospitalManagementSystem.Views.MP09_Dispensing
             string message =
                 $"Dispense {TotalUnits()} unit(s) of {_summary.Count} medicine(s) to {_selected.PatientName}?\n\n" +
                 $"Prescription: {_selected.PrescriptionId}\nPayment: {method}\nTotal: {SettingsHelper.FormatMoney(TotalAmount())}\n\n" +
-                "The stock will be reduced (oldest expiry first).";
+                "The stock will be reduced (oldest expiry first)." +
+                (method == DispensingRepository.ChargeToBill
+                    ? "\n\nNothing is paid at the pharmacy: the medicines are added to the patient's bill in Itemized Billing (\"Unbilled Charges\")."
+                    : string.Empty);
             if (!MessageHelper.Confirm(message, "Confirm dispensing", DialogOwner())) return;
 
             string dispensingId;
@@ -679,6 +684,7 @@ namespace HospitalManagementSystem.Views.MP09_Dispensing
                     LoadHistory();
                     return;
                 }
+                AuditHelper.LogView(AuditHelper.Dispensing, slip.DispensingId, slip.PatientId, "Opened the dispensing slip");
                 using var dialog = new DispensingSlipDialog(slip);
                 dialog.ShowDialog(DialogOwner());
             }

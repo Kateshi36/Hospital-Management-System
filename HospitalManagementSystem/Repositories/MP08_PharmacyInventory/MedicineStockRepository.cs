@@ -273,6 +273,10 @@ namespace HospitalManagementSystem.Repositories.MP08_MedicineStock
                     DatabaseHelper.Param("@supplier", input.Supplier.Trim()),
                     DatabaseHelper.Param("@price", input.PurchasePrice),
                     DatabaseHelper.Param("@user", SessionManager.CurrentUserId > 0 ? SessionManager.CurrentUserId : (int?)null));
+
+                AuditHelper.Log(conn, tx, AuditHelper.StockIn, AuditHelper.MedicineStock, input.MedicineId, null,
+                    $"{medicine}: batch {input.BatchNumber.Trim()}, {input.Quantity} unit(s), expires {input.ExpiryDate:yyyy-MM-dd}, " +
+                    $"supplier {input.Supplier.Trim()}, {input.PurchasePrice.ToString("N2", System.Globalization.CultureInfo.InvariantCulture)} each");
             });
         }
 
@@ -319,6 +323,12 @@ namespace HospitalManagementSystem.Repositories.MP08_MedicineStock
                     DatabaseHelper.Param("@change", input.QuantityChange),
                     DatabaseHelper.Param("@reason", input.Reason.Trim()),
                     DatabaseHelper.Param("@user", SessionManager.CurrentUserId > 0 ? SessionManager.CurrentUserId : (int?)null));
+
+                object? medicineId = DatabaseHelper.ExecuteScalar(conn, tx,
+                    "SELECT medicine_id FROM stock_batches WHERE batch_id = @id", DatabaseHelper.Param("@id", input.BatchId));
+                AuditHelper.Log(conn, tx, AuditHelper.Adjust, AuditHelper.MedicineStock, medicineId as string ?? input.BatchId.ToString(System.Globalization.CultureInfo.InvariantCulture), null,
+                    $"Batch {DatabaseHelper.GetString(batch.Rows[0], "batch_number")}: {(input.QuantityChange > 0 ? "+" : "")}{input.QuantityChange} " +
+                    $"(was {remaining}, now {remaining + input.QuantityChange}) - {input.Reason.Trim()}");
 
                 return (int)(remaining + input.QuantityChange);
             });

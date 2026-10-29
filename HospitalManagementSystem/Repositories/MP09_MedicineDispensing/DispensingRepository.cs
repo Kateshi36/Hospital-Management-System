@@ -74,7 +74,12 @@ namespace HospitalManagementSystem.Repositories.MP09_Dispensing
         // Lists
         // ------------------------------------------------------------------
 
-        public List<LookupItem> GetPaymentMethods() => LookupRepository.Fixed(LookupRepository.PaymentMethods);
+        /// <summary>"Charge to Bill": the medicines are not paid at the pharmacy; they appear in Itemized Billing (MP11) as unbilled charges.</summary>
+        public const string ChargeToBill = "Charge to Bill";
+
+        public static readonly string[] DispensingMethods = LookupRepository.PaymentMethods.Concat(new[] { ChargeToBill }).ToArray();
+
+        public List<LookupItem> GetPaymentMethods() => LookupRepository.Fixed(DispensingMethods);
 
         /// <summary>Prescriptions of the last 90 days (newest first), optionally filtered by patient / prescription ID and by "can still be dispensed".</summary>
         public List<PrescriptionChoice> GetPrescriptions(string? text, bool onlyDispensable)
@@ -148,7 +153,7 @@ namespace HospitalManagementSystem.Repositories.MP09_Dispensing
         {
             var errors = new List<string>();
             if (string.IsNullOrEmpty(request.PrescriptionId)) errors.Add("Select a prescription first.");
-            if (!LookupRepository.PaymentMethods.Contains(request.PaymentMethod)) errors.Add("Choose a payment method.");
+            if (!DispensingMethods.Contains(request.PaymentMethod)) errors.Add("Choose a payment method.");
             if (request.Lines.Any(l => l.Quantity < 0)) errors.Add("A quantity to dispense cannot be negative.");
             if (!request.Lines.Any(l => l.Quantity > 0)) errors.Add("Nothing to dispense: enter a quantity of at least 1 for one medicine.");
             return errors;
@@ -294,6 +299,13 @@ namespace HospitalManagementSystem.Repositories.MP09_Dispensing
                     if (need > 0)
                         throw new InvalidOperationException($"{DatabaseHelper.GetString(row, "medicine_name")}: the stock changed while saving. Nothing was dispensed - please try again.");
                 }
+
+                object? patient = DatabaseHelper.ExecuteScalar(conn, tx,
+                    "SELECT a.patient_id FROM prescriptions r JOIN consultations c ON c.consultation_id = r.consultation_id " +
+                    "JOIN appointments a ON a.appointment_id = c.appointment_id WHERE r.prescription_id = @rx",
+                    DatabaseHelper.Param("@rx", request.PrescriptionId));
+                AuditHelper.Log(conn, tx, AuditHelper.Dispense, AuditHelper.Dispensing, dispensingId, patient as string,
+                    $"Prescription {request.PrescriptionId}: {wanted.Sum(l => l.Quantity)} unit(s) of {wanted.Count} medicine(s), payment {request.PaymentMethod}");
 
                 return dispensingId;
             });

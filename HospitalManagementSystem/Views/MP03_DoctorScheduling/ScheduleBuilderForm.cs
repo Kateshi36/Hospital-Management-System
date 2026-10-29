@@ -18,7 +18,7 @@ namespace HospitalManagementSystem.Views.MP03_DoctorScheduling
     ///
     /// All visuals live in ScheduleBuilderForm.Designer.cs; this file only holds behaviour.
     /// </summary>
-    public partial class ScheduleBuilderForm : Form
+    public partial class ScheduleBuilderForm : Views.Main.PageHost
     {
         private readonly DoctorScheduleRepository _repository = new DoctorScheduleRepository();
         private readonly FormValidator _validator;
@@ -35,6 +35,7 @@ namespace HospitalManagementSystem.Views.MP03_DoctorScheduling
         public ScheduleBuilderForm(string doctorId, string doctorName)
         {
             InitializeComponent();
+            Load += (s, e) => Views.Main.PageHost.ApplyMinimum(this);   // scroll instead of squeezing on small screens
             FormHelper.Prepare(this);        // drop-down lists line up with their boxes; logo as window icon
 
             _doctorId = doctorId;

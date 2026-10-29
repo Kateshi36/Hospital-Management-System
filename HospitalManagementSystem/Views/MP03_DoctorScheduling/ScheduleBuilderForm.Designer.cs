@@ -915,7 +915,7 @@
             ClientSize = new Size(1280, 800);
             Font = new Font("Segoe UI", 10.5F, FontStyle.Regular, GraphicsUnit.Point, 0);
             ForeColor = Color.FromArgb(20, 34, 51);
-            MinimumSize = new Size(1000, 640);
+            MinimumSize = new Size(800, 560);
             Padding = new Padding(28, 24, 28, 20);
             CancelButton = btnClose;
             ShowInTaskbar = false;

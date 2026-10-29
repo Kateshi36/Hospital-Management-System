@@ -55,6 +55,7 @@
             pnlRecHistoryFooter = new Panel();
             lblRecHistoryInfo = new Label();
             flowRecHistoryActions = new FlowLayoutPanel();
+            btnRefund = new Button();
             btnReprint = new Button();
             pnlRecHistoryHeader = new Panel();
             lblRecHistoryTitle = new Label();
@@ -589,6 +590,7 @@
             flowRecHistoryActions.AutoSize = true;
             flowRecHistoryActions.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             flowRecHistoryActions.BackColor = Color.Transparent;
+            flowRecHistoryActions.Controls.Add(btnRefund);
             flowRecHistoryActions.Controls.Add(btnReprint);
             flowRecHistoryActions.Dock = DockStyle.Right;
             flowRecHistoryActions.Margin = new Padding(0);
@@ -596,6 +598,19 @@
             flowRecHistoryActions.Padding = new Padding(0, 10, 18, 0);
             flowRecHistoryActions.TabIndex = 1;
             flowRecHistoryActions.WrapContents = false;
+            // 
+            // btnRefund
+            // 
+            btnRefund.BackColor = Color.FromArgb(180, 35, 24);
+            btnRefund.FlatStyle = FlatStyle.Flat;
+            btnRefund.Font = new Font("Segoe UI Semibold", 10.5F, FontStyle.Regular, GraphicsUnit.Point, 0);
+            btnRefund.ForeColor = Color.White;
+            btnRefund.Margin = new Padding(10, 0, 0, 0);
+            btnRefund.Name = "btnRefund";
+            btnRefund.Size = new Size(110, 36);
+            btnRefund.TabIndex = 0;
+            btnRefund.Text = "Refund";
+            btnRefund.UseVisualStyleBackColor = false;
             // 
             // btnReprint
             // 
@@ -607,7 +622,7 @@
             btnReprint.Margin = new Padding(10, 0, 0, 0);
             btnReprint.Name = "btnReprint";
             btnReprint.Size = new Size(150, 36);
-            btnReprint.TabIndex = 0;
+            btnReprint.TabIndex = 1;
             btnReprint.Text = "Reprint Receipt";
             btnReprint.UseMnemonic = false;
             btnReprint.UseVisualStyleBackColor = false;
@@ -1657,6 +1672,7 @@
         private System.Windows.Forms.Panel pnlRecHistoryFooter;
         private System.Windows.Forms.Label lblRecHistoryInfo;
         private System.Windows.Forms.FlowLayoutPanel flowRecHistoryActions;
+        private System.Windows.Forms.Button btnRefund;
         private System.Windows.Forms.Button btnReprint;
         private System.Windows.Forms.Panel pnlRecHistoryHeader;
         private System.Windows.Forms.Label lblRecHistoryTitle;

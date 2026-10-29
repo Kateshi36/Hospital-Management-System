@@ -10,6 +10,47 @@ namespace HospitalManagementSystem.Repositories.Common
     /// </summary>
     public class DashboardRepository
     {
+        /// <summary>
+        /// The dashboard's search-as-you-type: patients whose ID, first / last name or phone number contain every typed word,
+        /// best matches first (ID or last name starting with the text). Returns at most <paramref name="limit"/> rows.
+        /// </summary>
+        public List<LookupItem> FindPatients(string text, int limit = 8)
+        {
+            string[] words = (text ?? string.Empty).Split(new[] { ' ', ',' }, StringSplitOptions.RemoveEmptyEntries);
+            if (words.Length == 0) return new List<LookupItem>();
+
+            var sql = new System.Text.StringBuilder(
+                "SELECT patient_id, first_name, last_name, phone_number, " +
+                "       TIMESTAMPDIFF(YEAR, date_of_birth, CURDATE()) AS age " +
+                "FROM patients WHERE 1 = 1");
+            var parameters = new List<MySqlConnector.MySqlParameter>();
+            for (int i = 0; i < words.Length; i++)
+            {
+                string name = "@w" + i.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                string digits = new string(words[i].Where(char.IsDigit).ToArray());
+                sql.Append($" AND (patient_id LIKE {name} OR first_name LIKE {name} OR last_name LIKE {name} OR middle_name LIKE {name}");
+                if (digits.Length >= 3)
+                {
+                    sql.Append($" OR REPLACE(REPLACE(REPLACE(phone_number, '-', ''), ' ', ''), '+', '') LIKE {name}d");
+                    parameters.Add(DatabaseHelper.Param(name + "d", "%" + digits + "%"));
+                }
+                sql.Append(')');
+                string escaped = words[i].Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_");
+                parameters.Add(DatabaseHelper.Param(name, "%" + escaped + "%"));
+            }
+            parameters.Add(DatabaseHelper.Param("@start", words[0] + "%"));
+            sql.Append(" ORDER BY (patient_id LIKE @start OR last_name LIKE @start) DESC, last_name, first_name LIMIT ")
+               .Append(Math.Clamp(limit, 1, 50).ToString(System.Globalization.CultureInfo.InvariantCulture));
+
+            DataTable table = DatabaseHelper.ExecuteQuery(sql.ToString(), parameters.ToArray());
+            return table.Rows.Cast<DataRow>().Select(r => new LookupItem
+            {
+                Id = DatabaseHelper.GetString(r, "patient_id"),
+                Name = $"{DatabaseHelper.GetString(r, "last_name")}, {DatabaseHelper.GetString(r, "first_name")}",
+                Extra = $"{DatabaseHelper.GetString(r, "patient_id")}  ·  {DatabaseHelper.GetInt(r, "age")} y  ·  {PhoneHelper.Format(DatabaseHelper.GetString(r, "phone_number"))}"
+            }).ToList();
+        }
+
         /// <summary>The five card numbers, fetched in a single round trip.</summary>
         public DashboardStats GetStats()
         {
@@ -23,14 +64,15 @@ namespace HospitalManagementSystem.Repositories.Common
                 "  (SELECT COUNT(*) FROM appointments WHERE appointment_date = CURDATE() AND status = 'Cancelled') AS cancelled_today, " +
                 "  (SELECT COUNT(*) FROM appointments WHERE appointment_date = CURDATE() AND status = 'No-show') AS noshow_today, " +
                 "  (SELECT COUNT(*) FROM queue_entries WHERE queue_date = CURDATE() AND queue_status = 'Waiting' AND is_emergency = 1) AS emergencies_waiting, " +
-                "  (SELECT COUNT(*) FROM payments WHERE DATE(payment_datetime) = CURDATE()) AS payments_today, " +
+                "  (SELECT COUNT(*) FROM payments WHERE DATE(payment_datetime) = CURDATE() AND payment_type = 'Payment') AS payments_today, " +
                 "  (SELECT COUNT(*) FROM queue_entries WHERE queue_date = CURDATE() AND queue_status IN ('Waiting', 'In Progress')) AS active_queue, " +
                 // day_of_week uses 0=Sunday..6=Saturday; MySQL DAYOFWEEK is 1=Sunday..7=Saturday
                 "  (SELECT COUNT(DISTINCT ds.doctor_id) FROM doctor_schedules ds " +
                 "     WHERE ds.day_of_week = (DAYOFWEEK(CURDATE()) - 1) " +
                 "       AND NOT EXISTS (SELECT 1 FROM doctor_leaves dl WHERE dl.doctor_id = ds.doctor_id AND dl.leave_date = CURDATE())) AS doctors_on_duty, " +
                 "  (SELECT COUNT(*) FROM lab_orders WHERE status = 'Pending') AS labs_pending, " +
-                "  (SELECT COALESCE(SUM(amount), 0) FROM payments WHERE DATE(payment_datetime) = CURDATE()) AS revenue_today");
+                "  (SELECT COALESCE(SUM(CASE WHEN payment_type = 'Refund' THEN -amount ELSE amount END), 0) FROM payments " +
+                "   WHERE DATE(payment_datetime) = CURDATE()) AS revenue_today");
 
             DataRow row = table.Rows[0];
             return new DashboardStats

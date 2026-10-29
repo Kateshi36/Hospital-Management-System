@@ -5,6 +5,7 @@ using HospitalManagementSystem.Models.MP02_PatientSearchEditor;
 using HospitalManagementSystem.Repositories.Common;
 using HospitalManagementSystem.Repositories.MP01_PatientRegistration;
 using HospitalManagementSystem.Repositories.MP02_PatientSearchEditor;
+using HospitalManagementSystem.Views.Shared;
 using static System.Runtime.CompilerServices.RuntimeHelpers;
 
 namespace HospitalManagementSystem.Views.MP02_PatientSearchEditor
@@ -13,14 +14,15 @@ namespace HospitalManagementSystem.Views.MP02_PatientSearchEditor
     /// MP02 - Patient Profile Editor (Part 5B), a full-screen dialog.
     ///
     ///  * Locked (gray): Patient Code, Registration Date, name, gender, age.
-    ///  * Editable: contact information, address, emergency contact, blood type, allergies, medical history.
+    ///  * Editable: contact information, address, emergency contact, blood type, allergies, medical history,
+    ///    discount card (Senior Citizen / PWD) and PhilHealth / HMO coverage.
     ///  * Date of Birth is locked until an administrator approves the override (checkbox + admin password).
     ///  * Blood Type and Date of Birth are "critical": saving a change to either asks for confirmation.
     ///  * Every field that really changed gets its own row in the change history (patient_audit_log).
     ///
     /// All visuals live in PatientEditForm.Designer.cs; this file only holds behaviour.
     /// </summary>
-    public partial class PatientEditForm : Form
+    public partial class PatientEditForm : Views.Main.PageHost
     {
         private const int MaxOverrideAttempts = 3;
         private const string NotSpecified = "Not specified";
@@ -44,12 +46,14 @@ namespace HospitalManagementSystem.Views.MP02_PatientSearchEditor
         public PatientEditForm(string patientId)
         {
             InitializeComponent();
+            Load += (s, e) => Views.Main.PageHost.ApplyMinimum(this);   // scroll instead of squeezing on small screens
             FormHelper.Prepare(this);        // drop-down lists line up with their boxes; logo as window icon
             _patientId = patientId;
 
             _validator = new FormValidator(errorProvider);
             _validator.AutoClear(txtPhone, txtEmail, txtPostalCode, txtEmergencyName, cboRelationship,
-                                 txtEmergencyPhone, dtpDob);
+                                 txtEmergencyPhone, dtpDob, cboDiscountCard, txtDiscountCardNo, cboCoverage,
+                                 txtCoverageNo, cboHmoProvider);
 
             ApplyInputRules();
             WireEvents();
@@ -73,27 +77,34 @@ namespace HospitalManagementSystem.Views.MP02_PatientSearchEditor
             InputHelper.Attach(txtProvince, InputKind.Address, 80);
             cboCity.MaxLength = 80;                                             // editable: a new city can be typed
             InputHelper.Attach(txtAdminUser, InputKind.Username, 50);
+            InputHelper.Attach(txtDiscountCardNo, InputKind.Address, BenefitRules.MaxCardNumber);
+            InputHelper.Attach(txtCoverageNo, InputKind.Address, BenefitRules.MaxCardNumber);
+            cboHmoProvider.MaxLength = BenefitRules.MaxProvider;
         }
 
         private void WireEvents()
         {
             // Any edit refreshes the "N fields changed" summary and the Save button.
             foreach (TextBox box in new[] { txtPhone, txtEmail, txtStreet, txtProvince, txtPostalCode, txtAllergies,
-                                            txtMedicalHistory, txtEmergencyName, txtEmergencyPhone })
+                                            txtMedicalHistory, txtEmergencyName, txtEmergencyPhone, txtDiscountCardNo, txtCoverageNo })
             {
                 box.TextChanged += (s, e) => OnFieldEdited();
             }
 
-            foreach (ComboBox combo in new[] { cboBloodType, cboCity, cboRelationship })
+            foreach (ComboBox combo in new[] { cboBloodType, cboCity, cboRelationship, cboDiscountCard, cboCoverage, cboHmoProvider })
             {
                 combo.SelectedIndexChanged += (s, e) => OnFieldEdited();
             }
+            cboHmoProvider.TextChanged += (s, e) => OnFieldEdited();   // another HMO can be typed in
+            cboDiscountCard.SelectedIndexChanged += (s, e) => UpdateBenefitFields();
+            cboCoverage.SelectedIndexChanged += (s, e) => UpdateBenefitFields();
 
             cboCity.SelectedIndexChanged += (s, e) => UpdateProvince();
             cboCity.TextChanged += (s, e) => OnFieldEdited();   // a new city can be typed in
             dtpDob.ValueChanged += (s, e) =>
             {
                 UpdateAge();
+                UpdateBenefitFields();
                 OnFieldEdited();
             };
 
@@ -120,6 +131,7 @@ namespace HospitalManagementSystem.Views.MP02_PatientSearchEditor
                 BindCombo(cboBloodType, _lookups.GetBloodTypes());
                 BindCombo(cboCity, _lookups.GetCities());
                 BindCombo(cboRelationship, _lookups.GetRelationships());
+                BenefitFields.Bind(cboDiscountCard, cboCoverage, cboHmoProvider);
 
                 if (!LoadPatient()) BeginInvoke(new Action(Close));
             }
@@ -190,6 +202,13 @@ namespace HospitalManagementSystem.Views.MP02_PatientSearchEditor
                 SelectById(cboRelationship, patient.EmergencyContactRelation);
                 txtEmergencyPhone.Text = PhoneHelper.ToSubscriberDigits(patient.EmergencyContactPhone);
 
+                BenefitFields.Select(cboDiscountCard, patient.DiscountCardType);
+                txtDiscountCardNo.Text = patient.DiscountCardNumber;
+                BenefitFields.Select(cboCoverage, patient.CoverageType);
+                txtCoverageNo.Text = patient.CoverageNumber;
+                cboHmoProvider.Text = patient.CoverageProvider;
+                UpdateBenefitFields();
+
                 // ---- override back to locked ----
                 chkAdminOverride.Checked = false;
                 ResetOverrideState();
@@ -245,6 +264,12 @@ namespace HospitalManagementSystem.Views.MP02_PatientSearchEditor
             txtAge.Text = Patient.CalculateAge(dtpDob.Value.Date, DateTime.Today).ToString();
         }
 
+        private void UpdateBenefitFields()
+        {
+            BenefitFields.Update(cboDiscountCard, lblDiscountCardNo, txtDiscountCardNo, cboCoverage, lblCoverageNo, txtCoverageNo,
+                                 lblHmoProvider, cboHmoProvider, lblBenefitsNote, dtpDob.Value.Date);
+        }
+
         private void OnFieldEdited()
         {
             if (_loading) return;
@@ -275,7 +300,12 @@ namespace HospitalManagementSystem.Views.MP02_PatientSearchEditor
                 MedicalHistory = txtMedicalHistory.Text.Trim(),
                 EmergencyContactName = txtEmergencyName.Text.Trim(),
                 EmergencyContactPhone = ToStoredPhone(txtEmergencyPhone.Text),
-                EmergencyContactRelation = SelectedValue(cboRelationship)
+                EmergencyContactRelation = SelectedValue(cboRelationship),
+                DiscountCardType = BenefitFields.Card(cboDiscountCard),
+                DiscountCardNumber = txtDiscountCardNo.Text.Trim(),
+                CoverageType = BenefitFields.Coverage(cboCoverage),
+                CoverageNumber = txtCoverageNo.Text.Trim(),
+                CoverageProvider = cboHmoProvider.Text.Trim()
             };
         }
 
@@ -440,6 +470,9 @@ namespace HospitalManagementSystem.Views.MP02_PatientSearchEditor
             }
 
             if (_dobUnlocked) _validator.NotFutureDate(dtpDob, "Date of Birth");
+
+            BenefitFields.Validate(_validator, cboDiscountCard, txtDiscountCardNo, cboCoverage, txtCoverageNo, cboHmoProvider,
+                                   _dobUnlocked ? dtpDob.Value.Date : _original.DateOfBirth);
 
             if (_validator.IsValid) return true;
 

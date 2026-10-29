@@ -18,12 +18,12 @@ namespace HospitalManagementSystem.Views.MP03_DoctorScheduling
     /// All visuals live in DoctorManagementForm.Designer.cs; this file only holds behaviour.
     /// The weekly schedule builder (Part 7B, ScheduleBuilderForm) is opened from the "Weekly Schedule..." button.
     /// </summary>
-    public partial class DoctorManagementForm : Form
+    public partial class DoctorManagementForm : Views.Main.PageHost
     {
         // 4-30 characters: capital letters, digits, hyphens (the License box already forces upper case).
         private static readonly Regex LicensePattern = new Regex(@"^[A-Z0-9][A-Z0-9\-]{3,29}$", RegexOptions.Compiled);
 
-        private const decimal MaxFee = 99999999.99m;   // DECIMAL(10,2) in the database
+        private static decimal MaxFee => DoctorRepository.MaxConsultationFee();   // 20,000.00 (app_settings max_consultation_fee, CHECK in the database)
 
         private readonly DoctorRepository _doctors = new DoctorRepository();
         private readonly LookupRepository _lookups = new LookupRepository();
@@ -81,7 +81,8 @@ namespace HospitalManagementSystem.Views.MP03_DoctorScheduling
             cboDepartment.MaxLength = 60;
             InputHelper.Attach(txtPhone, InputKind.PhoneSubscriber);        // +63 fixed, then exactly 10 digits
             InputHelper.Attach(txtEmail, InputKind.Email, 120);
-            InputHelper.Attach(txtFee, InputKind.Decimal2, 11);             // digits and one point, 2 decimals
+            InputHelper.Attach(txtFee, InputKind.Decimal2, 8);              // digits and one point, 2 decimals (max 20000.00)
+            txtFee.PlaceholderText = $"0.00 - {MaxFee:N2}";
         }
 
         private void WireEvents()
@@ -313,7 +314,8 @@ namespace HospitalManagementSystem.Views.MP03_DoctorScheduling
             }
             else
             {
-                _validator.InRange(txtFee, fee, 0.01m, MaxFee, "Consultation Fee");
+                if (fee <= 0 || fee > MaxFee)
+                    _validator.AddError(txtFee, $"Consultation Fee must be more than 0 and at most {MaxFee:N2} (the hospital's maximum fee).");
             }
 
             if (_validator.IsValid) return true;

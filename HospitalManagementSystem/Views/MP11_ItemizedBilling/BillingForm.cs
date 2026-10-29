@@ -1,9 +1,10 @@
 ﻿using HospitalManagementSystem.Helpers;
 using HospitalManagementSystem.Models.Common;
+using HospitalManagementSystem.Models.MP01_PatientRegistration;
 using HospitalManagementSystem.Models.MP11_Billing;
+using HospitalManagementSystem.Repositories.MP01_PatientRegistration;
 using HospitalManagementSystem.Repositories.MP11_Billing;
 using System.Globalization;
-using System.Reflection.PortableExecutable;
 using System.Text.RegularExpressions;
 
 namespace HospitalManagementSystem.Views.MP11_Billing
@@ -22,21 +23,36 @@ namespace HospitalManagementSystem.Views.MP11_Billing
     ///
     ///   ALL BILLS
     ///     every bill with its totals and payment status; open one (a Draft can be edited, a Finalized bill is view-only)
-    ///     or delete a Draft. Finalized bills can never be deleted.
+    ///     or delete a Draft. Finalized bills can never be deleted or edited: a mistake is corrected with VOID BILL
+    ///     (reason required, only when nothing is left paid on it - refund first), optionally creating a corrected draft copy.
+    ///
+    ///   LINKED CHARGES ("Unbilled Charges" button): the patient's consultation fees, medicines dispensed with
+    ///     "Charge to Bill" and lab orders that are not on a bill yet can be added in one step. Such an item keeps its link
+    ///     (column "From"), can be removed but not changed, and can never be billed twice.
+    ///
+    ///   DISCOUNTS: Flat amount, Percent, or the statutory Senior Citizen / PWD discount (20 %, VAT-exempt, ID number required).
+    ///   COVERAGE: PhilHealth or HMO pays part of the bill; the covered amount is deducted and the patient pays the rest.
+    ///   Both are filled in AUTOMATICALLY from the patient's record (discount card / coverage saved at registration)
+    ///   when the patient of a new bill is chosen; the cashier only enters the amount PhilHealth / the HMO covers.
     ///
     /// The rules live in BillingRepository.Validate and BillCalculator; this form shows the same rules next to the fields.
     /// All visuals live in BillingForm.Designer.cs; the grid columns are created here (BuildGridColumns).
     /// </summary>
-    public partial class BillingForm : Form
+    public partial class BillingForm : Views.Main.PageHost, IPageMinimumSize
     {
+        /// <summary>The bill and add-a-charge cards are stacked on the left, so this page needs a little more height.</summary>
+        public Size PageMinimumSize => new Size(1150, 920);
+
         private static readonly Color DraftBack = ThemeHelper.WarningSoft;
         private static readonly Color DraftFore = ThemeHelper.Warning;
         private static readonly Color FinalBack = ThemeHelper.SuccessSoft;
+        private static readonly Color VoidBack = ThemeHelper.DangerSoft;
         private static readonly Color ErrorFore = ThemeHelper.Danger;
 
         private enum ViewMode { Builder, List }
 
         private readonly BillingRepository _repository = new BillingRepository();
+        private readonly PatientRepository _patients = new PatientRepository();
         private readonly FormValidator _validator;
 
         private readonly List<BillItem> _items = new List<BillItem>();
@@ -57,7 +73,8 @@ namespace HospitalManagementSystem.Views.MP11_Billing
 
             _validator = new FormValidator(errorProvider);
             _validator.AutoClear(cboPatient, cboCategory, cboItem, txtDescription, txtQuantity, txtUnitPrice,
-                txtDiscount, txtTaxRate, txtAuthorizedBy);
+                txtDiscount, txtTaxRate, txtAuthorizedBy, txtDiscountId, cboBillCoverage, txtBillCoverageNo, txtCoverageAmount,
+                cboBillHmoProvider);
 
             BuildGridColumns();
             GridHelper.Apply(dgvItems);
@@ -87,11 +104,12 @@ namespace HospitalManagementSystem.Views.MP11_Billing
             dgvItems.AutoGenerateColumns = false;
             dgvBills.AutoGenerateColumns = false;
 
-            AddColumn(dgvItems, "colICategory", "Category", nameof(BillItem.Category), 17);
-            AddColumn(dgvItems, "colIDescription", "Description", nameof(BillItem.Description), 38);
-            AddColumn(dgvItems, "colIQuantity", "Qty / days", nameof(BillItem.QuantityText), 11, true);
-            AddColumn(dgvItems, "colIPrice", "Unit price", nameof(BillItem.UnitPriceText), 15, true);
-            AddColumn(dgvItems, "colIAmount", "Amount", nameof(BillItem.AmountText), 17, true);
+            AddColumn(dgvItems, "colICategory", "Category", nameof(BillItem.Category), 14);
+            AddColumn(dgvItems, "colIDescription", "Description", nameof(BillItem.Description), 34);
+            AddColumn(dgvItems, "colIFrom", "From", nameof(BillItem.SourceText), 15);
+            AddColumn(dgvItems, "colIQuantity", "Qty / days", nameof(BillItem.QuantityText), 9, true);
+            AddColumn(dgvItems, "colIPrice", "Unit price", nameof(BillItem.UnitPriceText), 13, true);
+            AddColumn(dgvItems, "colIAmount", "Amount", nameof(BillItem.AmountText), 15, true);
 
             AddColumn(dgvBills, "colLCode", "Bill ID", nameof(BillListRow.BillId), 15);
             AddColumn(dgvBills, "colLPatient", "Patient", nameof(BillListRow.PatientName), 16);
@@ -99,7 +117,7 @@ namespace HospitalManagementSystem.Views.MP11_Billing
             AddColumn(dgvBills, "colLSubtotal", "Subtotal", nameof(BillListRow.SubtotalText), 10, true);
             AddColumn(dgvBills, "colLDiscount", "Discount", nameof(BillListRow.DiscountText), 9, true);
             AddColumn(dgvBills, "colLTax", "Tax", nameof(BillListRow.TaxText), 8, true);
-            AddColumn(dgvBills, "colLTotal", "Grand total", nameof(BillListRow.GrandTotalText), 11, true);
+            AddColumn(dgvBills, "colLTotal", "Patient pays", nameof(BillListRow.GrandTotalText), 11, true);
             AddColumn(dgvBills, "colLStatus", "Status", nameof(BillListRow.Status), 9);
             AddColumn(dgvBills, "colLPayment", "Payment", nameof(BillListRow.PaymentStatus), 11);
             AddColumn(dgvBills, "colLCreated", "Created", nameof(BillListRow.CreatedText), 15);
@@ -134,7 +152,11 @@ namespace HospitalManagementSystem.Views.MP11_Billing
             InputHelper.Attach(txtDiscount, InputKind.Decimal2, 11);
             InputHelper.Attach(txtTaxRate, InputKind.Decimal2, 6);
             InputHelper.Attach(txtAuthorizedBy, InputKind.PersonName, BillingRules.MaxAuthorizedBy);
+            InputHelper.Attach(txtDiscountId, InputKind.Address, BillingRules.MaxDiscountId);
             InputHelper.Attach(txtListSearch, InputKind.Address, 60);
+            InputHelper.Attach(txtBillCoverageNo, InputKind.Address, BenefitRules.MaxCardNumber);
+            InputHelper.Attach(txtCoverageAmount, InputKind.Decimal2, 11);
+            cboBillHmoProvider.MaxLength = BenefitRules.MaxProvider;
         }
 
         private void WireEvents()
@@ -144,7 +166,10 @@ namespace HospitalManagementSystem.Views.MP11_Billing
 
             // bill + patient
             btnPatientFind.Click += (s, e) => FindPatients();
+            cboPatient.SelectedIndexChanged += (s, e) => { if (!_loading) { MarkDirty(); UpdateUnbilledButton(); ApplyPatientBenefits(); } };
+            btnUnbilled.Click += (s, e) => AddUnbilledCharges();
             txtPatientSearch.KeyDown += (s, e) => OnEnter(e, () => FindPatients());
+            SearchHelper.AttachLive(txtPatientSearch, () => FindPatients(), minLength: 2);
 
             // add a charge
             cboCategory.SelectedIndexChanged += (s, e) => OnCategoryChanged();
@@ -161,6 +186,11 @@ namespace HospitalManagementSystem.Views.MP11_Billing
             txtDiscount.TextChanged += (s, e) => OnSummaryInputChanged();
             txtTaxRate.TextChanged += (s, e) => OnSummaryInputChanged();
             txtAuthorizedBy.TextChanged += (s, e) => OnSummaryInputChanged();
+            txtDiscountId.TextChanged += (s, e) => OnSummaryInputChanged();
+            cboBillCoverage.SelectedIndexChanged += (s, e) => OnCoverageChanged();
+            txtBillCoverageNo.TextChanged += (s, e) => OnSummaryInputChanged();
+            txtCoverageAmount.TextChanged += (s, e) => OnSummaryInputChanged();
+            cboBillHmoProvider.TextChanged += (s, e) => OnSummaryInputChanged();
             btnSaveDraft.Click += (s, e) => Persist(finalize: false);
             btnFinalize.Click += (s, e) => Persist(finalize: true);
             btnNewBill.Click += (s, e) => NewBillClicked();
@@ -169,11 +199,13 @@ namespace HospitalManagementSystem.Views.MP11_Billing
             btnListSearch.Click += (s, e) => LoadBills();
             btnListAll.Click += (s, e) => { _loading = true; txtListSearch.Clear(); cboListStatus.SelectedIndex = 0; _loading = false; LoadBills(); };
             txtListSearch.KeyDown += (s, e) => OnEnter(e, () => LoadBills());
+            SearchHelper.AttachLive(txtListSearch, () => LoadBills());
             cboListStatus.SelectedIndexChanged += (s, e) => { if (!_loading && _initialized) LoadBills(); };
             dgvBills.SelectionChanged += (s, e) => UpdateListButtons();
             dgvBills.CellDoubleClick += (s, e) => { if (e.RowIndex >= 0) OpenSelectedBill(); };
             btnOpenBill.Click += (s, e) => OpenSelectedBill();
             btnDeleteDraft.Click += (s, e) => DeleteSelectedDraft();
+            btnVoidBill.Click += (s, e) => VoidSelectedBill();
 
             VisibleChanged += (s, e) =>
             {
@@ -199,11 +231,20 @@ namespace HospitalManagementSystem.Views.MP11_Billing
             {
                 BindLookup(cboCategory, _repository.GetCategories(), "Select the category...");
                 BindLookup(cboDiscountType, _repository.GetDiscountTypes(), null);
+                BindLookup(cboBillCoverage, new List<LookupItem>
+                {
+                    new LookupItem { Id = BillingRules.CoverageNone, Name = "None" },
+                    new LookupItem { Id = BillingRules.CoveragePhilHealth, Name = "PhilHealth" },
+                    new LookupItem { Id = BillingRules.CoverageHmo, Name = "HMO" }
+                }, null);
+                cboBillHmoProvider.Items.Clear();
+                cboBillHmoProvider.Items.AddRange(BenefitRules.HmoProviders.Cast<object>().ToArray());
                 BindLookup(cboListStatus, new List<LookupItem>
                 {
                     LookupItem.Placeholder("All bills"),
                     LookupItem.Of(BillingRules.StatusDraft),
-                    LookupItem.Of(BillingRules.StatusFinalized)
+                    LookupItem.Of(BillingRules.StatusFinalized),
+                    LookupItem.Of(BillingRules.StatusVoided)
                 }, null);
             }
             catch (Exception ex)
@@ -258,7 +299,7 @@ namespace HospitalManagementSystem.Views.MP11_Billing
 
         private void MarkDirty()
         {
-            if (_loading || _bill.IsFinalized) return;
+            if (_loading || _bill.IsLocked) return;
             _dirty = true;
             UpdateBanner();
         }
@@ -266,7 +307,7 @@ namespace HospitalManagementSystem.Views.MP11_Billing
         /// <summary>True when it is safe to replace the bill on the screen (nothing unsaved, or the user agrees to discard it).</summary>
         private bool ConfirmDiscardChanges()
         {
-            if (!_dirty || _bill.IsFinalized) return true;
+            if (!_dirty || _bill.IsLocked) return true;
             return MessageHelper.Confirm("The bill on the Bill Builder screen has changes that are not saved.\n\nDiscard them?",
                 "Unsaved changes", DialogOwner());
         }
@@ -288,6 +329,9 @@ namespace HospitalManagementSystem.Views.MP11_Billing
                 txtDiscount.Text = "0.00";
                 txtTaxRate.Text = FormatPercent(_bill.TaxRate);
                 txtAuthorizedBy.Clear();
+                txtDiscountId.Clear();
+                SetCoverageInputs(BillingRules.CoverageNone, string.Empty, string.Empty, 0m);
+                lblCoverageMessage.Text = string.Empty;
 
                 cboCategory.SelectedIndex = 0;
                 LoadPriceList(string.Empty);
@@ -328,6 +372,9 @@ namespace HospitalManagementSystem.Views.MP11_Billing
                 txtDiscount.Text = bill.DiscountValue.ToString("0.00", CultureInfo.InvariantCulture);
                 txtTaxRate.Text = FormatPercent(bill.TaxRate);
                 txtAuthorizedBy.Text = bill.AuthorizedBy;
+                txtDiscountId.Text = bill.DiscountIdNumber;
+                SetCoverageInputs(bill.CoverageType, bill.CoverageNumber, bill.CoverageProvider, bill.CoverageAmount);
+                lblCoverageMessage.Text = string.Empty;
 
                 cboCategory.SelectedIndex = 0;
                 LoadPriceList(string.Empty);
@@ -350,20 +397,24 @@ namespace HospitalManagementSystem.Views.MP11_Billing
             Recalculate();
         }
 
-        /// <summary>Draft versus Finalized: a finalized bill disables every control that could change it.</summary>
+        /// <summary>Draft versus Finalized / Voided: a locked bill disables every control that could change it.</summary>
         private void ApplyState()
         {
-            bool locked = _bill.IsFinalized;
+            bool locked = _bill.IsLocked;
 
             foreach (Control control in new Control[]
             {
                 cboCategory, cboItem, txtDescription, txtQuantity, txtUnitPrice, btnAddItem, btnClearItem,
-                cboDiscountType, txtDiscount, txtTaxRate, txtAuthorizedBy, btnSaveDraft, btnFinalize
+                cboDiscountType, txtDiscount, txtTaxRate, txtAuthorizedBy, txtDiscountId, btnSaveDraft, btnFinalize,
+                cboBillCoverage, txtBillCoverageNo, txtCoverageAmount, cboBillHmoProvider
             })
             {
                 control.Enabled = !locked;
             }
             btnRemoveItem.Enabled = !locked && _editingIndex >= 0;
+            ApplyDiscountLook();
+            ApplyCoverageLook();
+            UpdateUnbilledButton();
 
             // the patient can be chosen until the bill is saved for the first time
             bool patientEditable = !locked && !_bill.IsSaved;
@@ -377,7 +428,14 @@ namespace HospitalManagementSystem.Views.MP11_Billing
 
         private void UpdateBanner()
         {
-            if (_bill.IsFinalized)
+            if (_bill.IsVoided)
+            {
+                string when = _bill.VoidedAt?.ToString("MMM d, yyyy h:mm tt", CultureInfo.InvariantCulture) ?? string.Empty;
+                lblBillState.Text = $"VOIDED  -  {_bill.BillId}  -  {when} by {(_bill.VoidedBy.Length > 0 ? _bill.VoidedBy : "-")}: {_bill.VoidReason}";
+                lblBillState.BackColor = VoidBack;
+                lblBillState.ForeColor = ThemeHelper.DangerInk;
+            }
+            else if (_bill.IsFinalized)
             {
                 lblBillState.Text = "FINALIZED  -  " + _bill.BillId + "  -  locked (view only)";
                 lblBillState.BackColor = FinalBack;
@@ -386,6 +444,7 @@ namespace HospitalManagementSystem.Views.MP11_Billing
             else
             {
                 string text = !_bill.IsSaved ? "NEW BILL  -  not saved yet" : $"DRAFT  -  {_bill.BillId}  -  saved, still editable";
+                if (_bill.CorrectsBillId.Length > 0) text += $"  -  corrects voided {_bill.CorrectsBillId}";
                 if (_dirty && _bill.IsSaved) text += "  (unsaved changes)";
                 lblBillState.Text = text;
                 lblBillState.BackColor = DraftBack;
@@ -426,7 +485,7 @@ namespace HospitalManagementSystem.Views.MP11_Billing
 
         private void FindPatients()
         {
-            if (_bill.IsFinalized || _bill.IsSaved) return;
+            if (_bill.IsLocked || _bill.IsSaved) return;
             try
             {
                 List<LookupItem> patients = _repository.GetPatients(txtPatientSearch.Text.Trim());
@@ -437,6 +496,7 @@ namespace HospitalManagementSystem.Views.MP11_Billing
                 else if (patients.Count == 1)
                 {
                     cboPatient.SelectedIndex = 1;
+                    MarkDirty();
                     SetStatus("1 patient found and selected.", ThemeHelper.TextMuted);
                 }
                 else
@@ -445,6 +505,81 @@ namespace HospitalManagementSystem.Views.MP11_Billing
             catch (Exception ex)
             {
                 MessageHelper.Error(ex, "The patients could not be searched.", DialogOwner());
+            }
+            UpdateUnbilledButton();
+        }
+
+        // ------------------------------------------------------------------
+        // Charges from Consultations, Dispensing and Laboratory
+        // ------------------------------------------------------------------
+
+        /// <summary>Unbilled charges of the chosen patient that are not on the screen yet.</summary>
+        private List<UnbilledCharge> PendingCharges(string patientId)
+        {
+            var onBill = new HashSet<string>(_items.Where(i => i.IsLinked).Select(i => i.SourceType + "|" + i.SourceId));
+            return _repository.GetUnbilledCharges(patientId).Where(c => !onBill.Contains(c.SourceType + "|" + c.SourceId)).ToList();
+        }
+
+        /// <summary>"Unbilled Charges (3)": enabled while the bill is editable and a patient is chosen.</summary>
+        private void UpdateUnbilledButton()
+        {
+            string patientId = SelectedId(cboPatient);
+            if (_bill.IsLocked || patientId.Length == 0)
+            {
+                btnUnbilled.Enabled = false;
+                btnUnbilled.Text = _bill.IsLocked ? "Unbilled Charges" : "Unbilled Charges  -  choose the patient first";
+                return;
+            }
+            try
+            {
+                int count = PendingCharges(patientId).Count;
+                btnUnbilled.Enabled = count > 0;
+                btnUnbilled.Text = count == 0 ? "No unbilled charges for this patient" : $"Add Unbilled Charges ({count})";
+            }
+            catch (Exception)
+            {
+                btnUnbilled.Enabled = true;
+                btnUnbilled.Text = "Unbilled Charges";
+            }
+        }
+
+        private void AddUnbilledCharges()
+        {
+            if (_bill.IsLocked) return;
+            string patientId = SelectedId(cboPatient);
+            if (patientId.Length == 0)
+            {
+                MessageHelper.Warning("Choose the patient first.", "Unbilled charges", DialogOwner());
+                return;
+            }
+
+            try
+            {
+                List<UnbilledCharge> charges = PendingCharges(patientId);
+                if (charges.Count == 0)
+                {
+                    MessageHelper.Info("This patient has no unbilled consultation, medicine or lab charges.", "Unbilled charges", DialogOwner());
+                    UpdateUnbilledButton();
+                    return;
+                }
+                if (_items.Count + charges.Count > BillingRules.MaxItems)
+                    charges = charges.Take(Math.Max(0, BillingRules.MaxItems - _items.Count)).ToList();
+
+                using var dialog = new UnbilledChargesDialog(cboPatient.Text.Trim(), charges);
+                if (dialog.ShowDialog(DialogOwner()) != DialogResult.OK) return;
+
+                foreach (UnbilledCharge charge in dialog.Selected) _items.Add(charge.ToBillItem());
+                MarkDirty();
+                RefreshItemsGrid();
+                ResetItemEditor(clearGridSelection: true);
+                Recalculate();
+                UpdateUnbilledButton();
+                SetStatus($"Added {dialog.Selected.Count} linked charge(s) ({Money(dialog.Selected.Sum(c => c.Amount))}). Save or finalize the bill to keep them.",
+                    ThemeHelper.Success);
+            }
+            catch (Exception ex)
+            {
+                MessageHelper.Error(ex, "The unbilled charges could not be loaded.", DialogOwner());
             }
         }
 
@@ -561,6 +696,8 @@ namespace HospitalManagementSystem.Views.MP11_Billing
                 txtQuantity.Text = "1";
                 if (cboItem.Items.Count > 0) cboItem.SelectedIndex = 0;
                 SetItemFieldsReadOnly(true);
+                ThemeHelper.SetReadOnlyLook(txtQuantity, false);
+                btnAddItem.Enabled = !_bill.IsLocked;
                 btnAddItem.Text = "Add Item";
                 btnRemoveItem.Enabled = false;
                 if (clearGridSelection)
@@ -578,7 +715,13 @@ namespace HospitalManagementSystem.Views.MP11_Billing
 
         private void AddOrUpdateItem()
         {
-            if (_bill.IsFinalized) return;
+            if (_bill.IsLocked) return;
+            if (_editingIndex >= 0 && _editingIndex < _items.Count && _items[_editingIndex].IsLinked)
+            {
+                MessageHelper.Warning("This charge comes from another module (see the \"From\" column), so its amount cannot be changed here. " +
+                                      "Remove it if it should not be billed.", "Linked charge", DialogOwner());
+                return;
+            }
             _validator.Begin();
 
             string category = SelectedId(cboCategory);
@@ -648,7 +791,7 @@ namespace HospitalManagementSystem.Views.MP11_Billing
 
         private void RemoveItem()
         {
-            if (_bill.IsFinalized || _editingIndex < 0 || _editingIndex >= _items.Count) return;
+            if (_bill.IsLocked || _editingIndex < 0 || _editingIndex >= _items.Count) return;
 
             BillItem item = _items[_editingIndex];
             if (!MessageHelper.ConfirmDestructive($"Remove \"{item.Description}\" ({Money(item.Amount)}) from this bill?", "Remove item", DialogOwner()))
@@ -659,7 +802,8 @@ namespace HospitalManagementSystem.Views.MP11_Billing
             RefreshItemsGrid();
             ResetItemEditor(clearGridSelection: true);
             Recalculate();
-            SetStatus($"Removed: {item.Description}.", ThemeHelper.TextMuted);
+            UpdateUnbilledButton();
+            SetStatus($"Removed: {item.Description}." + (item.IsLinked ? " It is unbilled again." : string.Empty), ThemeHelper.TextMuted);
         }
 
         /// <summary>Shows the items in the grid again (the grid keeps its columns; the selection is cleared or set to selectIndex).</summary>
@@ -684,7 +828,7 @@ namespace HospitalManagementSystem.Views.MP11_Billing
         /// <summary>Clicking an item in the grid loads it into the editor, so it can be changed (Update Item) or removed.</summary>
         private void OnItemSelected()
         {
-            if (_loading || _bill.IsFinalized) return;
+            if (_loading || _bill.IsLocked) return;
             if (dgvItems.SelectedRows.Count == 0) return;
 
             int index = dgvItems.SelectedRows[0].Index;
@@ -724,6 +868,20 @@ namespace HospitalManagementSystem.Views.MP11_Billing
 
                 btnAddItem.Text = "Update Item";
                 btnRemoveItem.Enabled = true;
+
+                if (item.IsLinked)
+                {
+                    // a linked charge keeps the amount of its source record: it can only be removed
+                    SetItemFieldsReadOnly(true);
+                    ThemeHelper.SetReadOnlyLook(txtQuantity, true);
+                    btnAddItem.Enabled = false;
+                    SetStatus($"\"{item.Description}\" comes from {item.SourceType} {item.SourceText} - it can be removed but not changed.", ThemeHelper.TextMuted);
+                }
+                else
+                {
+                    ThemeHelper.SetReadOnlyLook(txtQuantity, false);
+                    btnAddItem.Enabled = true;
+                }
             }
             finally
             {
@@ -736,17 +894,203 @@ namespace HospitalManagementSystem.Views.MP11_Billing
         // Summary: Subtotal -> Discount -> Tax -> Grand total
         // ------------------------------------------------------------------
 
+        private bool _wasStatutory;
+
         private void OnDiscountTypeChanged()
         {
             if (_loading) return;
+            string type = SelectedId(cboDiscountType);
+            bool statutory = BillingRules.IsStatutory(type);
+
+            _loading = true;
+            try
+            {
+                if (statutory)
+                {
+                    // Senior Citizen / PWD: fixed 20 % and VAT-exempt
+                    txtDiscount.Text = BillingRepository.StatutoryPercent().ToString("0.00", CultureInfo.InvariantCulture);
+                    txtTaxRate.Text = "0";
+                }
+                else if (_wasStatutory)
+                {
+                    txtDiscount.Text = "0.00";
+                    txtTaxRate.Text = FormatPercent(SettingsHelper.GetDecimal(SettingsHelper.DefaultTaxRate, 0.12m));
+                    txtDiscountId.Clear();
+                }
+            }
+            finally
+            {
+                _loading = false;
+            }
+
             UpdateDiscountCaption();
+            ApplyDiscountLook();
             MarkDirty();
             Recalculate();
+            if (statutory && txtDiscountId.Enabled) txtDiscountId.Focus();
         }
 
         private void UpdateDiscountCaption()
         {
-            lblDiscountCap.Text = SelectedId(cboDiscountType) == BillingRules.DiscountPercent ? "Discount (%)" : "Discount (amount)";
+            lblDiscountCap.Text = BillingRules.IsPercentType(SelectedId(cboDiscountType)) ? "Discount (%)" : "Discount (amount)";
+        }
+
+        /// <summary>Senior Citizen / PWD: discount and tax are fixed (gray), and the ID number row appears.</summary>
+        private void ApplyDiscountLook()
+        {
+            string type = SelectedId(cboDiscountType);
+            bool statutory = BillingRules.IsStatutory(type);
+            _wasStatutory = statutory;
+
+            ThemeHelper.SetReadOnlyLook(txtDiscount, statutory || _bill.IsLocked);
+            ThemeHelper.SetReadOnlyLook(txtTaxRate, statutory || _bill.IsLocked);
+            tlpDiscountId.Visible = statutory;
+            if (statutory)
+            {
+                decimal percent = BillingRepository.StatutoryPercent();
+                lblDiscountId.Text = type == BillingRules.DiscountSenior ? "Senior ID no. *" : "PWD ID no. *";
+                lblDiscountIdMessage.Text = type == BillingRules.DiscountSenior
+                    ? $"Senior Citizen discount (RA 9994): {percent:0.##}% off and VAT-exempt. Check the OSCA ID card and enter its number."
+                    : $"PWD discount (RA 10754): {percent:0.##}% off and VAT-exempt. Check the PWD ID card and enter its number.";
+            }
+        }
+
+        // ------------------------------------------------------------------
+        // PhilHealth / HMO coverage and the patient's discount card (filled in automatically)
+        // ------------------------------------------------------------------
+
+        private void SetCoverageInputs(string type, string number, string provider, decimal amount)
+        {
+            bool was = _loading;
+            _loading = true;
+            try
+            {
+                cboBillCoverage.SelectedValue = string.IsNullOrEmpty(type) ? BillingRules.CoverageNone : type;
+                if (cboBillCoverage.SelectedIndex < 0 && cboBillCoverage.Items.Count > 0) cboBillCoverage.SelectedIndex = 0;
+                txtBillCoverageNo.Text = number;
+                cboBillHmoProvider.Text = provider;
+                txtCoverageAmount.Text = amount == 0m ? string.Empty : amount.ToString("0.00", CultureInfo.InvariantCulture);   // blank = 0.00 (placeholder)
+            }
+            finally
+            {
+                _loading = was;
+            }
+            ApplyCoverageLook();
+        }
+
+        private void OnCoverageChanged()
+        {
+            if (_loading) return;
+            if (SelectedId(cboBillCoverage) == BillingRules.CoverageNone)
+            {
+                _loading = true;
+                txtCoverageAmount.Clear();
+                _loading = false;
+            }
+            ApplyCoverageLook();
+            MarkDirty();
+            Recalculate();
+            if (SelectedId(cboBillCoverage) != BillingRules.CoverageNone && txtBillCoverageNo.Enabled)
+                (txtBillCoverageNo.Text.Trim().Length == 0 ? txtBillCoverageNo : txtCoverageAmount).Focus();
+        }
+
+        /// <summary>No coverage: number and amount are gray; the HMO company appears only for an HMO.</summary>
+        private void ApplyCoverageLook()
+        {
+            string type = SelectedId(cboBillCoverage);
+            bool covered = type.Length > 0 && type != BillingRules.CoverageNone;
+            ThemeHelper.SetReadOnlyLook(txtBillCoverageNo, !covered || _bill.IsLocked);
+            ThemeHelper.SetReadOnlyLook(txtCoverageAmount, !covered || _bill.IsLocked);
+            lblBillCoverageNoCap.Text = BenefitRules.CoverageNumberLabel(type) + (covered ? " *" : string.Empty);
+            lblCoverageAmountCap.Text = covered ? $"{type} covers (amount) *" : "Covered amount";
+            bool hmo = type == BillingRules.CoverageHmo;
+            lblBillHmoProviderCap.Visible = hmo;
+            cboBillHmoProvider.Visible = hmo;
+        }
+
+        /// <summary>
+        /// A new bill: when the patient is chosen, the discount card and the PhilHealth / HMO coverage saved in the
+        /// patient's record are put on the bill automatically (Senior Citizen / PWD = 20 % and VAT-exempt with the ID number;
+        /// PhilHealth / HMO with the member number). The cashier only enters the amount PhilHealth / the HMO covers.
+        /// Choosing another patient replaces what was filled in for the previous one.
+        /// </summary>
+        private void ApplyPatientBenefits()
+        {
+            if (_bill.IsLocked || _bill.IsSaved) return;
+
+            Patient? patient = null;
+            string patientId = SelectedId(cboPatient);
+            if (patientId.Length > 0)
+            {
+                try
+                {
+                    patient = _patients.GetById(patientId);
+                }
+                catch (Exception ex)
+                {
+                    MessageHelper.Error(ex, "The patient's discount card and coverage could not be read.", DialogOwner());
+                    return;
+                }
+            }
+
+            var applied = new List<string>();
+            _loading = true;
+            try
+            {
+                // ---- discount card ----
+                if (patient != null && patient.HasDiscountCard && BillingRules.IsStatutory(patient.DiscountCardType))
+                {
+                    cboDiscountType.SelectedValue = patient.DiscountCardType;
+                    txtDiscount.Text = BillingRepository.StatutoryPercent().ToString("0.00", CultureInfo.InvariantCulture);
+                    txtTaxRate.Text = "0";
+                    txtDiscountId.Text = patient.DiscountCardNumber;
+                    applied.Add($"{patient.DiscountCardType} discount {BillingRepository.StatutoryPercent():0.##}%, VAT-exempt (ID {patient.DiscountCardNumber})");
+                }
+                else if (BillingRules.IsStatutory(SelectedId(cboDiscountType)))
+                {
+                    // the previous patient's Senior / PWD discount does not carry over
+                    cboDiscountType.SelectedValue = BillingRules.DiscountFlat;
+                    txtDiscount.Text = "0.00";
+                    txtTaxRate.Text = FormatPercent(SettingsHelper.GetDecimal(SettingsHelper.DefaultTaxRate, 0.12m));
+                    txtDiscountId.Clear();
+                }
+            }
+            finally
+            {
+                _loading = false;
+            }
+
+            // ---- coverage ----
+            if (patient != null && patient.HasCoverage)
+            {
+                SetCoverageInputs(patient.CoverageType, patient.CoverageNumber, patient.CoverageProvider, 0m);
+                applied.Add(patient.CoverageType == BillingRules.CoverageHmo
+                    ? $"HMO {patient.CoverageProvider} (card {patient.CoverageNumber})"
+                    : $"PhilHealth (PIN {patient.CoverageNumber})");
+            }
+            else
+            {
+                SetCoverageInputs(BillingRules.CoverageNone, string.Empty, string.Empty, 0m);
+            }
+
+            UpdateDiscountCaption();
+            ApplyDiscountLook();
+            Recalculate();
+
+            if (patient == null)
+                lblCoverageMessage.Text = string.Empty;
+            else if (applied.Count == 0)
+            {
+                lblCoverageMessage.ForeColor = ThemeHelper.TextMuted;
+                lblCoverageMessage.Text = "No discount card or PhilHealth / HMO on file for this patient. " +
+                                          "Add them in Patient Search > Edit Profile if the patient has one.";
+            }
+            else
+            {
+                lblCoverageMessage.ForeColor = ThemeHelper.SuccessInk;
+                lblCoverageMessage.Text = "Applied from the patient's record: " + string.Join("; ", applied) + "." +
+                    (patient.HasCoverage ? $" Enter the amount {patient.CoverageType} covers (approved claim / LOA)." : string.Empty);
+            }
         }
 
         private void OnSummaryInputChanged()
@@ -772,9 +1116,19 @@ namespace HospitalManagementSystem.Views.MP11_Billing
                 CreatedBy = _bill.CreatedBy,
                 PatientId = SelectedId(cboPatient),
                 DiscountType = SelectedId(cboDiscountType),
+                DiscountIdNumber = txtDiscountId.Text.Trim(),
                 AuthorizedBy = txtAuthorizedBy.Text.Trim(),
+                CorrectsBillId = _bill.CorrectsBillId,
+                CoverageType = SelectedId(cboBillCoverage) is { Length: > 0 } coverage ? coverage : BillingRules.CoverageNone,
+                CoverageNumber = txtBillCoverageNo.Text.Trim(),
+                CoverageProvider = cboBillHmoProvider.Text.Trim(),
                 Items = _items.Select(i => i.Clone()).ToList()
             };
+
+            string covered = txtCoverageAmount.Text.Trim();
+            if (covered.Length == 0 || !bill.HasCoverage) bill.CoverageAmount = 0m;
+            else if (ValidationHelper.TryParseDecimal(covered, out decimal coveredValue)) bill.CoverageAmount = coveredValue;
+            else issues.Add(new BillingIssue(BillingField.CoverageAmount, "The covered amount must be a number (for example 1500.00)."));
 
             string discount = txtDiscount.Text.Trim();
             if (discount.Length == 0) bill.DiscountValue = 0m;
@@ -799,22 +1153,31 @@ namespace HospitalManagementSystem.Views.MP11_Billing
             lblDiscountAmount.Text = totals.DiscountAmount > 0 ? "- " + Money(totals.DiscountAmount) : Money(0m);
             lblTaxable.Text = Money(totals.TaxableAmount);
             lblTaxAmount.Text = Money(totals.TaxAmount);
-            lblGrandTotal.Text = Money(totals.GrandTotal);
+            lblGrandTotal.Text = Money(totals.GrossTotal);
+            bool showCoverage = bill.HasCoverage;
+            lblCoverageDeductCap.Visible = showCoverage;
+            lblCoverageDeduct.Visible = showCoverage;
+            lblPatientPaysCap.Visible = showCoverage;
+            lblPatientPays.Visible = showCoverage;
+            lblCoverageDeductCap.Text = showCoverage ? $"Less {bill.CoverageType}" : "Less PhilHealth / HMO";
+            lblCoverageDeduct.Text = "- " + Money(totals.CoverageAmount);
+            lblPatientPays.Text = Money(totals.GrandTotal);
 
             lblItemsInfo.Text = _items.Count == 0
-                ? "No items yet - add a charge on the left."
+                ? "No items yet - add a charge on the left, or use \"Unbilled Charges\"."
                 : $"{_items.Count} item(s)   -   subtotal {Money(totals.Subtotal)}" +
-                  (_bill.IsFinalized ? "" : "   -   click an item to change or remove it");
+                  (_bill.IsLocked ? "" : "   -   click an item to change or remove it");
 
             // problems that can be shown while typing: the discount and the tax rate
             List<BillingIssue> live = parseIssues
                 .Concat(BillingRepository.Validate(bill, finalize: false))
-                .Where(i => i.Field == BillingField.Discount || i.Field == BillingField.Tax)
+                .Where(i => i.Field == BillingField.Discount || i.Field == BillingField.Tax || i.Field == BillingField.CoverageAmount)
                 .ToList();
             bool discountInvalid = live.Any(i => i.Field == BillingField.Discount);
 
             lblSummaryNote.Text = live.Count > 0 ? live[0].Message : string.Empty;
             lblGrandTotal.ForeColor = live.Count > 0 ? ErrorFore : ThemeHelper.Accent;
+            lblPatientPays.ForeColor = live.Count > 0 ? ErrorFore : ThemeHelper.Accent;
 
             // authorization prompt: only when the discount is above the threshold
             bool needsAuthorization = !discountInvalid && BillingRepository.NeedsAuthorization(bill);
@@ -842,13 +1205,18 @@ namespace HospitalManagementSystem.Views.MP11_Billing
                 case BillingField.Items: return dgvItems;
                 case BillingField.Discount: return txtDiscount;
                 case BillingField.Tax: return txtTaxRate;
+                case BillingField.DiscountId: return txtDiscountId;
+                case BillingField.Coverage: return cboBillCoverage;
+                case BillingField.CoverageNumber: return txtBillCoverageNo;
+                case BillingField.CoverageProvider: return cboBillHmoProvider;
+                case BillingField.CoverageAmount: return txtCoverageAmount;
                 default: return txtAuthorizedBy;
             }
         }
 
         private void Persist(bool finalize)
         {
-            if (_bill.IsFinalized) return;
+            if (_bill.IsLocked) return;
             _validator.Begin();
 
             var (bill, parseIssues) = CollectBill();
@@ -869,9 +1237,14 @@ namespace HospitalManagementSystem.Views.MP11_Billing
                     $"Finalize this bill for {cboPatient.Text.Trim()}?\n\n" +
                     $"Items:        {bill.Items.Count}\n" +
                     $"Subtotal:   {Money(totals.Subtotal)}\n" +
-                    $"Discount:   {Money(totals.DiscountAmount)}\n" +
+                    $"Discount:   {Money(totals.DiscountAmount)}" +
+                    (BillingRules.IsStatutory(bill.DiscountType) ? $"  ({bill.DiscountType}, ID {bill.DiscountIdNumber}, VAT-exempt)" : string.Empty) + "\n" +
                     $"Tax:           {Money(totals.TaxAmount)}\n" +
-                    $"GRAND TOTAL:  {Money(totals.GrandTotal)}\n\n" +
+                    (bill.HasCoverage
+                        ? $"Total:          {Money(totals.GrossTotal)}\n" +
+                          $"Less {bill.CoverageType}:  {Money(totals.CoverageAmount)}  ({bill.CoverageNumber})\n" +
+                          $"PATIENT PAYS:  {Money(totals.GrandTotal)}\n\n"
+                        : $"GRAND TOTAL:  {Money(totals.GrandTotal)}\n\n") +
                     "The bill code will be generated and the bill will be LOCKED: items can no longer be added, edited or removed.";
                 if (!MessageHelper.Confirm(message, "Finalize bill", DialogOwner())) return;
             }
@@ -885,7 +1258,9 @@ namespace HospitalManagementSystem.Views.MP11_Billing
                 {
                     SetStatus($"Finalized {saved.BillId}.", ThemeHelper.Success);
                     BillTotals totals = BillCalculator.Calculate(saved);
-                    MessageHelper.Success($"Bill {saved.BillId} was finalized for {saved.PatientName}.\n\nGrand total: {Money(totals.GrandTotal)}\n\n" +
+                    MessageHelper.Success($"Bill {saved.BillId} was finalized for {saved.PatientName}.\n\n" +
+                                          (saved.HasCoverage ? $"Total: {Money(totals.GrossTotal)}\nLess {saved.CoverageType}: {Money(totals.CoverageAmount)}\nPatient pays: {Money(totals.GrandTotal)}\n\n"
+                                                             : $"Grand total: {Money(totals.GrandTotal)}\n\n") +
                                           "The bill is now locked. Payments are recorded in Payment Processing.", "Bill finalized", DialogOwner());
                 }
                 else
@@ -950,6 +1325,7 @@ namespace HospitalManagementSystem.Views.MP11_Billing
             BillListRow? row = SelectedRow();
             btnOpenBill.Enabled = row != null;
             btnDeleteDraft.Enabled = row != null && row.Status == BillingRules.StatusDraft;
+            btnVoidBill.Enabled = row != null && row.Status == BillingRules.StatusFinalized;
         }
 
         private void OpenSelectedBill()
@@ -970,12 +1346,66 @@ namespace HospitalManagementSystem.Views.MP11_Billing
 
                 LoadBillIntoScreen(bill);
                 ShowMode(ViewMode.Builder);
-                SetStatus(bill.IsFinalized ? $"Opened {bill.BillId} (locked, view only)." : $"Opened draft {bill.BillId} - you can keep editing it.",
+                SetStatus(bill.IsVoided ? $"Opened voided bill {bill.BillId} (view only)."
+                          : bill.IsFinalized ? $"Opened {bill.BillId} (locked, view only)."
+                          : $"Opened draft {bill.BillId} - you can keep editing it.",
                     ThemeHelper.TextMuted);
             }
             catch (Exception ex)
             {
                 MessageHelper.Error(ex, "The bill could not be opened.", DialogOwner());
+            }
+        }
+
+        /// <summary>
+        /// Voids the selected finalized bill: blocked while money is still paid on it (refund first), asks for the reason,
+        /// and can open a corrected draft copy right away.
+        /// </summary>
+        private void VoidSelectedBill()
+        {
+            BillListRow? row = SelectedRow();
+            if (row == null || row.Status != BillingRules.StatusFinalized) return;
+
+            string? blocker = BillingRepository.VoidBlocker(row.Status, row.AmountPaid);
+            if (blocker != null)
+            {
+                MessageHelper.Warning(blocker, "The bill cannot be voided yet", DialogOwner());
+                return;
+            }
+            if (!ConfirmDiscardChanges()) return;
+
+            using var dialog = new VoidBillDialog(row.BillId, row.PatientName, row.GrandTotal);
+            if (dialog.ShowDialog(DialogOwner()) != DialogResult.OK) return;
+
+            try
+            {
+                string? draftId = _repository.VoidBill(row.BillId, dialog.Reason, dialog.CreateCorrection);
+                if (_bill.BillId == row.BillId) StartNewBill();
+                LoadBills();
+
+                if (draftId != null)
+                {
+                    Bill? draft = _repository.GetBill(draftId);
+                    if (draft != null)
+                    {
+                        LoadBillIntoScreen(draft);
+                        ShowMode(ViewMode.Builder);
+                    }
+                    SetStatus($"Voided {row.BillId}. Corrected copy {draftId} is open as a draft - fix it, then finalize it.", ThemeHelper.Success);
+                }
+                else
+                {
+                    SetStatus($"Voided {row.BillId}. Its linked charges are unbilled again.", ThemeHelper.Success);
+                }
+            }
+            catch (InvalidOperationException ex)
+            {
+                MessageHelper.Warning(ex.Message, "Itemized Billing", DialogOwner());
+                LoadBills();
+            }
+            catch (Exception ex)
+            {
+                MessageHelper.Error(ex, "The bill could not be voided.", DialogOwner());
             }
         }
 

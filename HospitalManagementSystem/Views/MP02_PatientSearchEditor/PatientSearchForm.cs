@@ -11,7 +11,7 @@ namespace HospitalManagementSystem.Views.MP02_PatientSearchEditor
     ///
     /// All visuals live in PatientSearchForm.Designer.cs; this file only holds behaviour.
     /// </summary>
-    public partial class PatientSearchForm : Form
+    public partial class PatientSearchForm : Views.Main.PageHost
     {
         private static readonly Color OkColor = ThemeHelper.Success;
         private static readonly Color WarnColor = ThemeHelper.Warning;
@@ -73,6 +73,11 @@ namespace HospitalManagementSystem.Views.MP02_PatientSearchEditor
                 };
             }
 
+            // search-as-you-type: results appear while a code, name or phone number is being typed
+            SearchHelper.AttachLive(txtSearchCode, LiveSearch, minLength: 3);
+            SearchHelper.AttachLive(txtSearchName, LiveSearch, minLength: 2);
+            SearchHelper.AttachLive(txtSearchPhone, LiveSearch, minLength: 3);
+
             dgvResults.SelectionChanged += (s, e) => UpdateActionButtons();
             dgvResults.CellDoubleClick += (s, e) =>
             {
@@ -85,7 +90,7 @@ namespace HospitalManagementSystem.Views.MP02_PatientSearchEditor
         private void ShowInitialState()
         {
             ShowState("Search for a patient",
-                      "Enter a code, name, phone number or date of birth above, then press Search (or Enter).");
+                      "Start typing a code, name or phone number - the matching patients appear right away.");
             SetMessage(string.Empty, MessageKind.Neutral);
             UpdateActionButtons();
             txtSearchName.Focus();
@@ -121,6 +126,38 @@ namespace HospitalManagementSystem.Views.MP02_PatientSearchEditor
             }
 
             ExecuteSearch(criteria);
+        }
+
+        /// <summary>The live search while typing: like Search, but an empty form just returns to the start state (no warning).</summary>
+        private void LiveSearch()
+        {
+            PatientSearchCriteria criteria = ReadCriteria();
+            if (!criteria.HasAny)
+            {
+                _lastCriteria = null;
+                dgvResults.DataSource = null;
+                ShowState("Search for a patient",
+                          "Start typing a code, name or phone number - the matching patients appear right away.");
+                SetMessage(string.Empty, MessageKind.Neutral);
+                return;
+            }
+            ExecuteSearch(criteria);
+        }
+
+        /// <summary>Shows one patient (called when a patient is picked in the dashboard search).</summary>
+        public void ShowPatient(string patientId)
+        {
+            txtSearchName.Clear();
+            txtSearchPhone.Clear();
+            dtpSearchDob.Checked = false;
+            txtSearchCode.Text = patientId;
+            ExecuteSearch(ReadCriteria());
+            if (dgvResults.Visible && dgvResults.Rows.Count > 0)
+            {
+                dgvResults.ClearSelection();
+                dgvResults.Rows[0].Selected = true;
+                dgvResults.CurrentCell = GridHelper.FirstVisibleCell(dgvResults.Rows[0]);
+            }
         }
 
         /// <summary>Runs the query and shows the results (or the friendly "no match" state).</summary>
@@ -238,6 +275,7 @@ namespace HospitalManagementSystem.Views.MP02_PatientSearchEditor
             string? patientId = SelectedPatientId();
             if (patientId == null) return;
 
+            AuditHelper.LogView(AuditHelper.Patient, patientId, patientId, "Opened the patient profile (personal and medical details)");
             using var editor = new PatientEditForm(patientId);
             editor.ShowDialog(DialogOwner());
 
@@ -250,6 +288,8 @@ namespace HospitalManagementSystem.Views.MP02_PatientSearchEditor
             DataRow? row = SelectedRow();
             if (row == null) return;
 
+            string id = Convert.ToString(row["patient_id"]) ?? string.Empty;
+            AuditHelper.LogView(AuditHelper.Patient, id, id, "Opened the change history of the profile");
             using var history = new AuditHistoryForm(
                 Convert.ToString(row["patient_id"]) ?? string.Empty,
                 Convert.ToString(row["full_name"]) ?? string.Empty);

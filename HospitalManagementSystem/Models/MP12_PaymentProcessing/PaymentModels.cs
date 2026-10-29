@@ -24,13 +24,21 @@ namespace HospitalManagementSystem.Models.MP12_Payment
 
         // bills.status
         public const string BillFinalized = "Finalized";
+        public const string BillVoided = "Voided";
+
+        // payments.payment_type
+        public const string TypePayment = "Payment";
+        public const string TypeRefund = "Refund";
 
         // payment status words (v_bill_payment_summary)
         public const string Outstanding = "Outstanding";
         public const string PartiallyPaid = "Partially Paid";
         public const string FullyPaid = "Fully Paid";
+        public const string Voided = "Voided";
 
         public const int MaxReference = 60;
+        public const int MaxRemarks = 250;
+        public const int MinRefundReason = 5;
         public const decimal MaxAmount = 99999999.99m;
         public const int ListLimit = 300;
         public const int PayableLimit = 200;
@@ -58,10 +66,14 @@ namespace HospitalManagementSystem.Models.MP12_Payment
         public string PatientId { get; set; } = string.Empty;
         public string PatientName { get; set; } = string.Empty;
         public DateTime BillDate { get; set; }
+        public string BillStatus { get; set; } = string.Empty;   // Finalized or Voided
         public decimal GrandTotal { get; set; }
-        public decimal AmountPaid { get; set; }
+        public decimal AmountPaid { get; set; }                  // net: payments minus refunds
+        public decimal AmountRefunded { get; set; }
         public decimal Balance { get; set; }
         public string PaymentStatus { get; set; } = string.Empty;
+
+        public bool IsVoided => BillStatus == PaymentRules.BillVoided;
 
         public string TotalText => GrandTotal.ToString("N2", CultureInfo.InvariantCulture);
         public string PaidText => AmountPaid.ToString("N2", CultureInfo.InvariantCulture);
@@ -69,20 +81,30 @@ namespace HospitalManagementSystem.Models.MP12_Payment
         public string DateText => BillDate.ToString("MMM dd, yyyy", CultureInfo.InvariantCulture);
     }
 
-    /// <summary>One payment of a bill (a row of payments).</summary>
+    /// <summary>One payment or refund of a bill (a row of payments).</summary>
     public class PaymentRecord
     {
-        /// <summary>PAY-YYYYMMDD-XXX (also the receipt number).</summary>
+        /// <summary>PAY-YYYYMMDD-XXX (also the receipt number), or RFD-YYYYMMDD-XXX for a refund.</summary>
         public string PaymentId { get; set; } = string.Empty;
+        public string PaymentType { get; set; } = PaymentRules.TypePayment;
+        public string RefundOfPaymentId { get; set; } = string.Empty;
+        public string Remarks { get; set; } = string.Empty;
+        /// <summary>For a payment: how much of it has been refunded already.</summary>
+        public decimal Refunded { get; set; }
         public decimal Amount { get; set; }
+
+        public bool IsRefund => PaymentType == PaymentRules.TypeRefund;
+        /// <summary>What can still be refunded from this payment (0 for a refund row).</summary>
+        public decimal Refundable => IsRefund ? 0m : Math.Max(0m, Amount - Refunded);
+        public string TypeText => IsRefund ? "Refund of " + RefundOfPaymentId : Refunded > 0 ? (Refundable > 0 ? "Partly refunded" : "Refunded") : "Payment";
         public string MethodName { get; set; } = string.Empty;
         public string ReferenceNumber { get; set; } = string.Empty;
         public decimal? Tendered { get; set; }
         public string ReceivedBy { get; set; } = string.Empty;
         public DateTime PaidAt { get; set; }
 
-        public string AmountText => Amount.ToString("N2", CultureInfo.InvariantCulture);
-        public string ReferenceText => ReferenceNumber.Length == 0 ? "-" : ReferenceNumber;
+        public string AmountText => (IsRefund ? "-" : string.Empty) + Amount.ToString("N2", CultureInfo.InvariantCulture);
+        public string ReferenceText => IsRefund ? (Remarks.Length == 0 ? "-" : Remarks) : ReferenceNumber.Length == 0 ? "-" : ReferenceNumber;
         public string TenderedText => Tendered.HasValue ? Tendered.Value.ToString("N2", CultureInfo.InvariantCulture) : "-";
         public string PaidAtText => PaidAt.ToString("MMM dd, yyyy  hh:mm tt", CultureInfo.InvariantCulture);
     }
@@ -95,6 +117,14 @@ namespace HospitalManagementSystem.Models.MP12_Payment
         public string Method { get; set; } = string.Empty;
         public string ReferenceNumber { get; set; } = string.Empty;
         public decimal? Tendered { get; set; }      // cash only
+    }
+
+    /// <summary>What the cashier typed for a refund (money given back from one payment).</summary>
+    public class RefundInput
+    {
+        public string PaymentId { get; set; } = string.Empty;
+        public decimal Amount { get; set; }
+        public string Reason { get; set; } = string.Empty;
     }
 
     /// <summary>Which part of the screen a validation message belongs to.</summary>
@@ -129,6 +159,9 @@ namespace HospitalManagementSystem.Models.MP12_Payment
         public string ReceivedBy { get; set; } = string.Empty;
         public DateTime PaidAt { get; set; }
         public string StatusAfter { get; set; } = string.Empty;
+        public bool IsRefund { get; set; }
+        public string RefundOfPaymentId { get; set; } = string.Empty;
+        public string Remarks { get; set; } = string.Empty;
 
         public decimal? Change => Tendered.HasValue ? Tendered.Value - AmountPaid : null;
 

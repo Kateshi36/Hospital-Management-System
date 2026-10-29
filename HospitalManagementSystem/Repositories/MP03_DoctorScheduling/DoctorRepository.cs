@@ -61,9 +61,12 @@ namespace HospitalManagementSystem.Repositories.MP03_DoctorScheduling
         /// </summary>
         public Doctor Add(Doctor doctor)
         {
-            return DatabaseHelper.ExecuteInTransaction((conn, tx) =>
+            EnsureFeeInRange(doctor.ConsultationFee);
+            Doctor saved = DatabaseHelper.ExecuteInTransaction((conn, tx) =>
             {
                 EnsureLicenseIsUnique(conn, tx, doctor.LicenseNumber, null);
+                doctor.Specialization = NormalizeOpenValue(conn, tx, "specialization", doctor.Specialization);
+                doctor.Department = NormalizeOpenValue(conn, tx, "department", doctor.Department);
 
                 doctor.DoctorId = GeneratorHelper.Generate(GeneratorHelper.Prefix.Doctor, conn, tx);
 
@@ -82,16 +85,52 @@ namespace HospitalManagementSystem.Repositories.MP03_DoctorScheduling
                     DatabaseHelper.Param("@fee", doctor.ConsultationFee),
                     DatabaseHelper.Param("@emp", doctor.EmploymentType));
 
+                AuditHelper.Log(conn, tx, AuditHelper.Create, AuditHelper.Doctor, doctor.DoctorId, null,
+                    $"Dr. {doctor.FirstName} {doctor.LastName}, {doctor.Specialization}, fee {doctor.ConsultationFee:N2}");
                 return doctor;
             });
+            AppEvents.RaiseDoctorsChanged();
+            return saved;
+        }
+
+        /// <summary>The highest consultation fee a doctor can have (app_settings max_consultation_fee, 20,000.00).</summary>
+        public static decimal MaxConsultationFee() => SettingsHelper.GetDecimal(SettingsHelper.MaxConsultationFee, 20000m);
+
+        private static void EnsureFeeInRange(decimal fee)
+        {
+            decimal max = MaxConsultationFee();
+            if (fee < 0 || fee > max)
+                throw new InvalidOperationException($"The consultation fee must be from 0.00 to {max:N2}.");
+        }
+
+        /// <summary>
+        /// Keeps the open lists (specialization, department) consistent: spaces are tidied, a value that already exists
+        /// with a different capitalisation ("cardiology" / "CARDIOLOGY") is saved with the existing spelling ("Cardiology"),
+        /// and a new value typed all in lower case gets capital initials. So every module shows the same name.
+        /// </summary>
+        public static string NormalizeOpenValue(MySqlConnector.MySqlConnection conn, MySqlConnector.MySqlTransaction? tx, string column, string value)
+        {
+            string tidy = string.Join(" ", (value ?? string.Empty).Split(' ', StringSplitOptions.RemoveEmptyEntries));
+            if (tidy.Length == 0) return tidy;
+            // column is a code constant (specialization / department), never user input; the collation compares without case
+            object? existing = DatabaseHelper.ExecuteScalar(conn, tx,
+                $"SELECT {column} FROM doctors WHERE {column} = @v GROUP BY {column} ORDER BY COUNT(*) DESC LIMIT 1",
+                DatabaseHelper.Param("@v", tidy));
+            if (existing is string found && found.Length > 0) return found;
+            if (tidy == tidy.ToLowerInvariant())
+                tidy = System.Globalization.CultureInfo.InvariantCulture.TextInfo.ToTitleCase(tidy);
+            return tidy;
         }
 
         /// <summary>Updates an existing doctor. The doctor ID never changes.</summary>
         public void Update(Doctor doctor)
         {
+            EnsureFeeInRange(doctor.ConsultationFee);
             DatabaseHelper.ExecuteInTransaction((conn, tx) =>
             {
                 EnsureLicenseIsUnique(conn, tx, doctor.LicenseNumber, doctor.DoctorId);
+                doctor.Specialization = NormalizeOpenValue(conn, tx, "specialization", doctor.Specialization);
+                doctor.Department = NormalizeOpenValue(conn, tx, "department", doctor.Department);
 
                 int rows = DatabaseHelper.ExecuteNonQuery(conn, tx,
                     "UPDATE doctors SET first_name = @first, last_name = @last, license_number = @lic, " +
@@ -116,7 +155,11 @@ namespace HospitalManagementSystem.Repositories.MP03_DoctorScheduling
                 {
                     throw new InvalidOperationException("This doctor no longer exists. Another user may have deleted the record.");
                 }
+
+                AuditHelper.Log(conn, tx, AuditHelper.Update, AuditHelper.Doctor, doctor.DoctorId, null,
+                    $"Dr. {doctor.FirstName} {doctor.LastName}, {doctor.Specialization}, fee {doctor.ConsultationFee:N2}");
             });
+            AppEvents.RaiseDoctorsChanged();
         }
 
         /// <summary>Counts what a delete would remove (schedules, leaves) and what would block it (history).</summary>
@@ -141,7 +184,9 @@ namespace HospitalManagementSystem.Repositories.MP03_DoctorScheduling
 
                 DatabaseHelper.ExecuteNonQuery(conn, tx, "DELETE FROM doctors WHERE doctor_id = @id",
                     DatabaseHelper.Param("@id", doctorId));
+                AuditHelper.Log(conn, tx, AuditHelper.Delete, AuditHelper.Doctor, doctorId, null, "Doctor deleted with schedules and leaves");
             });
+            AppEvents.RaiseDoctorsChanged();
         }
 
         /// <summary>Plain-language list of the records that stop a doctor from being deleted.</summary>

@@ -25,7 +25,7 @@ namespace HospitalManagementSystem.Views.MP06_ConsultationVitals
     /// Every rule lives in ConsultationRepository (Validate and Save); the form shows the same rules next to the fields.
     /// All visuals live in ConsultationForm.Designer.cs; this file only holds behaviour.
     /// </summary>
-    public partial class ConsultationForm : Form
+    public partial class ConsultationForm : Views.Main.PageHost
     {
         private readonly ConsultationRepository _repository = new ConsultationRepository();
         private readonly FormValidator _validator;
@@ -55,6 +55,7 @@ namespace HospitalManagementSystem.Views.MP06_ConsultationVitals
             ApplyInputRules();
             WireEvents();
             Load += (s, e) => InitializeScreen();
+            AppEvents.OnDoctorsChanged(this, ReloadDoctorList);   // a doctor was added / edited in Doctor Directory
         }
 
         /// <summary>
@@ -136,7 +137,14 @@ namespace HospitalManagementSystem.Views.MP06_ConsultationVitals
                 e.Handled = true;
                 LoadHistory();
             };
+            SearchHelper.AttachLive(txtHistorySearch, LoadHistory);
             dgvHistory.SelectionChanged += (s, e) => ShowSelectedNote();
+            // a note the user clicks is a view of the patient's medical record (audit trail, RA 10173)
+            dgvHistory.CellClick += (s, e) =>
+            {
+                if (e.RowIndex >= 0 && dgvHistory.Rows[e.RowIndex].DataBoundItem is ConsultationRecord r)
+                    AuditHelper.LogView(AuditHelper.Consultation, r.ConsultationId, r.PatientId, "Opened the consultation note");
+            };
 
             VisibleChanged += (s, e) =>
             {
@@ -147,6 +155,31 @@ namespace HospitalManagementSystem.Views.MP06_ConsultationVitals
         // ------------------------------------------------------------------
         // Start-up and view switching
         // ------------------------------------------------------------------
+
+        /// <summary>Reloads the doctor filter after a doctor changed in MP03, keeping the selection.</summary>
+        private void ReloadDoctorList()
+        {
+            if (cboDoctor.DataSource == null) return;
+            string? keep = cboDoctor.SelectedItem is LookupItem { HasValue: true } item ? item.Id : null;
+            _loading = true;
+            try
+            {
+                var doctors = new List<LookupItem> { LookupItem.Placeholder("All doctors") };
+                doctors.AddRange(_repository.GetDoctors().Select(d => new LookupItem { Id = d.DoctorId, Name = d.Display }));
+                cboDoctor.DataSource = doctors;
+                int index = keep == null ? 0 : doctors.FindIndex(d => d.Id == keep);
+                cboDoctor.SelectedIndex = index < 0 ? 0 : index;
+            }
+            catch (Exception ex)
+            {
+                MessageHelper.Error(ex, "The doctor list could not be refreshed.", DialogOwner());
+            }
+            finally
+            {
+                _loading = false;
+            }
+            LoadPending();
+        }
 
         private void InitializeScreen()
         {

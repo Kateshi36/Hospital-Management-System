@@ -1,4 +1,4 @@
--- =====================================================================
+﻿-- =====================================================================
 --  HOSPITAL MANAGEMENT SYSTEM  -  schema.sql
 --  Target : XAMPP MySQL / MariaDB (MariaDB 10.4+ or MySQL 8.0.16+)
 --  Design : 3NF where it matters, InnoDB, utf8mb4
@@ -125,10 +125,20 @@ CREATE TABLE patients (
     registered_at                  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     registered_by_user_id          INT          NULL,
     last_updated_at                DATETIME     NULL,
+    -- Discount card (RA 9994 Senior Citizen / RA 10754 PWD: 20 % off + VAT-exempt) and insurance coverage.
+    -- Itemized Billing applies these automatically when a bill is started for the patient.
+    discount_card_type             ENUM('None','Senior Citizen','PWD') NOT NULL DEFAULT 'None',
+    discount_card_number           VARCHAR(30)  NULL,       -- OSCA ID / PWD ID number
+    coverage_type                  ENUM('None','PhilHealth','HMO') NOT NULL DEFAULT 'None',
+    coverage_number                VARCHAR(30)  NULL,       -- PhilHealth PIN / HMO card number
+    coverage_provider              VARCHAR(80)  NULL,       -- HMO company (Maxicare, Intellicare, ...)
     PRIMARY KEY (patient_id),
     KEY idx_patients_name (last_name, first_name),
     KEY idx_patients_phone (phone_number),
     KEY idx_patients_dob (date_of_birth),
+    CONSTRAINT chk_patient_card     CHECK (discount_card_type = 'None' OR discount_card_number IS NOT NULL),
+    CONSTRAINT chk_patient_coverage CHECK (coverage_type = 'None' OR coverage_number IS NOT NULL),
+    CONSTRAINT chk_patient_hmo      CHECK (coverage_type <> 'HMO' OR coverage_provider IS NOT NULL),
     CONSTRAINT fk_patients_user FOREIGN KEY (registered_by_user_id) REFERENCES users (user_id)
 ) ENGINE=InnoDB;
 
@@ -144,6 +154,27 @@ CREATE TABLE patient_audit_log (
     KEY idx_audit_patient (patient_id, changed_at),
     CONSTRAINT fk_audit_patient FOREIGN KEY (patient_id)         REFERENCES patients (patient_id),
     CONSTRAINT fk_audit_user    FOREIGN KEY (changed_by_user_id) REFERENCES users (user_id)
+) ENGINE=InnoDB;
+
+-- System-wide audit trail (Data Privacy Act / RA 10173): who did what to which record, and who OPENED
+-- a patient's medical record. Rows are only ever inserted, never updated or deleted by the app.
+-- patient_id is filled whenever the record belongs to a patient, so a patient's full access history
+-- can be listed. (Field-level patient edits stay in patient_audit_log.)
+CREATE TABLE audit_log (
+    audit_id    BIGINT       NOT NULL AUTO_INCREMENT,
+    logged_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    user_id     INT          NULL,
+    action      VARCHAR(30)  NOT NULL,   -- View, Create, Update, Finalize, Void, Payment, Refund, Dispense, Stock In, Adjust ...
+    entity_type VARCHAR(40)  NOT NULL,   -- Patient, Consultation, Prescription, Bill, Payment, Medicine Stock ...
+    entity_id   VARCHAR(40)  NOT NULL,
+    patient_id  VARCHAR(20)  NULL,
+    details     VARCHAR(500) NULL,
+    PRIMARY KEY (audit_id),
+    KEY idx_auditlog_time (logged_at),
+    KEY idx_auditlog_entity (entity_type, entity_id),
+    KEY idx_auditlog_patient (patient_id, logged_at),
+    CONSTRAINT fk_auditlog_user    FOREIGN KEY (user_id)    REFERENCES users (user_id),
+    CONSTRAINT fk_auditlog_patient FOREIGN KEY (patient_id) REFERENCES patients (patient_id)
 ) ENGINE=InnoDB;
 
 -- =====================================================================
@@ -165,7 +196,7 @@ CREATE TABLE doctors (
     PRIMARY KEY (doctor_id),
     UNIQUE KEY uq_doctors_license (license_number),
     KEY idx_doctors_specialization (specialization),
-    CONSTRAINT chk_doctor_fee CHECK (consultation_fee >= 0)
+    CONSTRAINT chk_doctor_fee CHECK (consultation_fee >= 0 AND consultation_fee <= 20000)   -- max 20,000.00
 ) ENGINE=InnoDB;
 
 -- Deleting a doctor removes schedules and leaves (MP03 rule).
@@ -387,7 +418,7 @@ CREATE TABLE prescription_items (
 CREATE TABLE dispensing_records (
     dispensing_id        VARCHAR(20) NOT NULL,              -- MS-YYYYMMDD-XXX
     prescription_id      VARCHAR(20) NOT NULL,
-    payment_method       ENUM('Cash','Debit','Credit','Online','Cheque') NOT NULL,
+    payment_method       ENUM('Cash','Debit','Credit','Online','Cheque','Charge to Bill') NOT NULL,   -- 'Charge to Bill' = billed in MP11
     dispensed_by_user_id INT         NULL,
     dispensed_at         DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (dispensing_id),
@@ -514,27 +545,55 @@ CREATE TABLE service_catalog (
 ) ENGINE=InnoDB;
 
 -- bill_id is assigned when the bill is created (Draft bills have one too).
--- discount_value is a flat amount ('Flat') or a percentage ('Percent').
+-- discount_value is a flat amount ('Flat') or a percentage ('Percent', 'Senior Citizen', 'PWD').
+-- Senior Citizen (RA 9994) / PWD (RA 10754): 20 % discount AND exempt from VAT, so the row stores
+-- discount_value = 20, tax_rate = 0 and the ID number of the card that was presented.
+-- A Finalized bill is never edited or deleted. A mistake is corrected by VOIDING it (reason + who + when;
+-- only when nothing is left paid on it) and issuing a new bill; corrects_bill_id links the new bill to the voided one.
 CREATE TABLE bills (
     bill_id            VARCHAR(20)   NOT NULL,              -- BILL-YYYYMMDD-XXX
     patient_id         VARCHAR(20)   NOT NULL,
-    status             ENUM('Draft','Finalized') NOT NULL DEFAULT 'Draft',
-    discount_type      ENUM('Flat','Percent')    NOT NULL DEFAULT 'Flat',
+    status             ENUM('Draft','Finalized','Voided') NOT NULL DEFAULT 'Draft',
+    discount_type      ENUM('Flat','Percent','Senior Citizen','PWD') NOT NULL DEFAULT 'Flat',
     discount_value     DECIMAL(10,2) NOT NULL DEFAULT 0,
+    discount_id_number VARCHAR(30)   NULL,                  -- OSCA / PWD ID number (Senior Citizen / PWD only)
     tax_rate           DECIMAL(5,4)  NOT NULL DEFAULT 0.1200,
     authorized_by      VARCHAR(100)  NULL,                  -- required above discount threshold
     created_at         DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
     created_by_user_id INT           NULL,
     finalized_at       DATETIME      NULL,
+    voided_at          DATETIME      NULL,
+    voided_by_user_id  INT           NULL,
+    void_reason        VARCHAR(250)  NULL,
+    corrects_bill_id   VARCHAR(20)   NULL,                  -- this bill replaces that voided bill
+    -- PhilHealth / HMO: the covered amount is deducted from the bill total; the patient pays the rest.
+    coverage_type      ENUM('None','PhilHealth','HMO') NOT NULL DEFAULT 'None',
+    coverage_number    VARCHAR(30)   NULL,                  -- PhilHealth PIN / HMO card number
+    coverage_provider  VARCHAR(80)   NULL,                  -- HMO company
+    coverage_amount    DECIMAL(10,2) NOT NULL DEFAULT 0,
     PRIMARY KEY (bill_id),
     KEY idx_bill_patient (patient_id),
     CONSTRAINT chk_bill_discount CHECK (discount_value >= 0),
     CONSTRAINT chk_bill_tax      CHECK (tax_rate >= 0),
-    CONSTRAINT fk_bill_patient FOREIGN KEY (patient_id)         REFERENCES patients (patient_id),
-    CONSTRAINT fk_bill_user    FOREIGN KEY (created_by_user_id) REFERENCES users (user_id)
+    CONSTRAINT chk_bill_senior   CHECK (discount_type NOT IN ('Senior Citizen','PWD')
+                                        OR (discount_value = 20 AND tax_rate = 0 AND discount_id_number IS NOT NULL)),
+    CONSTRAINT chk_bill_void     CHECK (status <> 'Voided' OR (void_reason IS NOT NULL AND voided_at IS NOT NULL)),
+    CONSTRAINT chk_bill_coverage CHECK (coverage_amount >= 0 AND
+                                        (coverage_type <> 'None' OR coverage_amount = 0) AND
+                                        (coverage_type = 'None' OR coverage_number IS NOT NULL) AND
+                                        (coverage_type <> 'HMO' OR coverage_provider IS NOT NULL)),
+    CONSTRAINT fk_bill_patient  FOREIGN KEY (patient_id)         REFERENCES patients (patient_id),
+    CONSTRAINT fk_bill_user     FOREIGN KEY (created_by_user_id) REFERENCES users (user_id),
+    CONSTRAINT fk_bill_voidedby FOREIGN KEY (voided_by_user_id)  REFERENCES users (user_id),
+    CONSTRAINT fk_bill_corrects FOREIGN KEY (corrects_bill_id)   REFERENCES bills (bill_id)
 ) ENGINE=InnoDB;
 
 -- Room charge = quantity (days) x unit_price (rate). Other categories use quantity 1 or units.
+-- source_type / source_id link a charge to the record it came from, so the same service is never billed twice:
+--   'Consultation' -> consultations.consultation_id (the doctor's consultation fee)
+--   'Dispensing'   -> dispensing_items.dispensing_item_id (medicines dispensed with payment 'Charge to Bill')
+--   'Lab Order'    -> lab_orders.order_id
+-- A charge counts as billed while it is on a Draft or Finalized bill; voiding the bill releases it again.
 CREATE TABLE bill_items (
     bill_item_id  INT           NOT NULL AUTO_INCREMENT,
     bill_id       VARCHAR(20)   NOT NULL,
@@ -543,30 +602,45 @@ CREATE TABLE bill_items (
     quantity      INT           NOT NULL DEFAULT 1,
     unit_price    DECIMAL(10,2) NOT NULL,
     amount        DECIMAL(12,2) GENERATED ALWAYS AS (ROUND(quantity * unit_price, 2)) STORED,
+    source_type   ENUM('Consultation','Dispensing','Lab Order') NULL,
+    source_id     VARCHAR(20)   NULL,
     PRIMARY KEY (bill_item_id),
     KEY idx_billitem_bill (bill_id),
-    CONSTRAINT chk_billitem_qty   CHECK (quantity > 0),
-    CONSTRAINT chk_billitem_price CHECK (unit_price > 0),
+    KEY idx_billitem_source (source_type, source_id),
+    CONSTRAINT chk_billitem_qty    CHECK (quantity > 0),
+    CONSTRAINT chk_billitem_price  CHECK (unit_price > 0),
+    CONSTRAINT chk_billitem_source CHECK ((source_type IS NULL) = (source_id IS NULL)),
     CONSTRAINT fk_billitem_bill FOREIGN KEY (bill_id) REFERENCES bills (bill_id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
 -- Payment status (Outstanding / Partially Paid / Fully Paid) is derived: see v_bill_payment_summary.
+-- A recorded payment is never edited or deleted. Money given back is a separate REVERSING row:
+-- payment_type 'Refund' (id RFD-YYYYMMDD-XXX), linked to the payment it reverses, with the reason.
+-- amount is always positive; the views subtract refunds.
 CREATE TABLE payments (
-    payment_id          VARCHAR(20)   NOT NULL,             -- PAY-YYYYMMDD-XXX
-    bill_id             VARCHAR(20)   NOT NULL,
-    amount              DECIMAL(12,2) NOT NULL,
-    payment_method      ENUM('Cash','Debit','Credit','Online','Cheque') NOT NULL,
-    reference_number    VARCHAR(60)   NULL,                 -- required for Debit/Credit/Online
-    tendered_amount     DECIMAL(12,2) NULL,                 -- cash only; change = tendered - amount
-    received_by_user_id INT           NOT NULL,
-    payment_datetime    DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    payment_id           VARCHAR(20)   NOT NULL,            -- PAY-YYYYMMDD-XXX  or  RFD-YYYYMMDD-XXX
+    bill_id              VARCHAR(20)   NOT NULL,
+    payment_type         ENUM('Payment','Refund') NOT NULL DEFAULT 'Payment',
+    amount               DECIMAL(12,2) NOT NULL,
+    payment_method       ENUM('Cash','Debit','Credit','Online','Cheque') NOT NULL,
+    reference_number     VARCHAR(60)   NULL,                -- required for Debit/Credit/Online payments
+    tendered_amount      DECIMAL(12,2) NULL,                -- cash only; change = tendered - amount
+    refund_of_payment_id VARCHAR(20)   NULL,                -- Refund: the payment it reverses
+    remarks              VARCHAR(250)  NULL,                -- Refund: the reason (required)
+    received_by_user_id  INT           NOT NULL,
+    payment_datetime     DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (payment_id),
     KEY idx_payment_bill (bill_id),
+    KEY idx_payment_refund_of (refund_of_payment_id),
     CONSTRAINT chk_payment_amount CHECK (amount > 0),
-    CONSTRAINT chk_payment_ref    CHECK (payment_method NOT IN ('Debit','Credit','Online')
+    CONSTRAINT chk_payment_ref    CHECK (payment_type = 'Refund'
+                                         OR payment_method NOT IN ('Debit','Credit','Online')
                                          OR reference_number IS NOT NULL),
-    CONSTRAINT fk_payment_bill FOREIGN KEY (bill_id)             REFERENCES bills (bill_id),
-    CONSTRAINT fk_payment_user FOREIGN KEY (received_by_user_id) REFERENCES users (user_id)
+    CONSTRAINT chk_payment_refund CHECK (payment_type = 'Payment'
+                                         OR (refund_of_payment_id IS NOT NULL AND remarks IS NOT NULL AND tendered_amount IS NULL)),
+    CONSTRAINT fk_payment_bill      FOREIGN KEY (bill_id)              REFERENCES bills (bill_id),
+    CONSTRAINT fk_payment_refund_of FOREIGN KEY (refund_of_payment_id) REFERENCES payments (payment_id),
+    CONSTRAINT fk_payment_user      FOREIGN KEY (received_by_user_id)  REFERENCES users (user_id)
 ) ENGINE=InnoDB;
 
 -- =====================================================================
@@ -632,36 +706,93 @@ FROM    bills b
 LEFT JOIN bill_items bi ON bi.bill_id = b.bill_id
 GROUP BY b.bill_id;
 
--- Order of calculation: Subtotal -> Discount -> Tax on post-discount -> Grand Total
+-- Order of calculation: Subtotal -> Discount -> Tax on post-discount -> Gross total -> less PhilHealth / HMO coverage -> Grand total (patient pays)
 CREATE VIEW v_bill_totals AS
-SELECT  x.bill_id, x.patient_id, x.status, x.created_at,
-        x.subtotal, x.discount_amount,
-        (x.subtotal - x.discount_amount)                         AS taxable_amount,
-        ROUND((x.subtotal - x.discount_amount) * x.tax_rate, 2)  AS tax_amount,
-        (x.subtotal - x.discount_amount)
-          + ROUND((x.subtotal - x.discount_amount) * x.tax_rate, 2) AS grand_total
+SELECT  y.bill_id, y.patient_id, y.status, y.created_at,
+        y.subtotal, y.discount_amount, y.taxable_amount, y.tax_amount,
+        y.gross_total, y.coverage_type, y.coverage_amount,
+        (y.gross_total - y.coverage_amount)                    AS grand_total     -- what the patient pays
 FROM (
-    SELECT  b.bill_id, b.patient_id, b.status, b.created_at, b.tax_rate,
-            s.subtotal,
-            ROUND(CASE WHEN b.discount_type = 'Percent'
-                       THEN s.subtotal * b.discount_value / 100
-                       ELSE b.discount_value END, 2) AS discount_amount
-    FROM    bills b
-    JOIN    v_bill_subtotals s ON s.bill_id = b.bill_id
+    SELECT  x.bill_id, x.patient_id, x.status, x.created_at, x.coverage_type,
+            LEAST(x.coverage_amount, (x.subtotal - x.discount_amount)
+                  + ROUND((x.subtotal - x.discount_amount) * x.tax_rate, 2)) AS coverage_amount,
+            x.subtotal, x.discount_amount,
+            (x.subtotal - x.discount_amount)                         AS taxable_amount,
+            ROUND((x.subtotal - x.discount_amount) * x.tax_rate, 2)  AS tax_amount,
+            (x.subtotal - x.discount_amount)
+              + ROUND((x.subtotal - x.discount_amount) * x.tax_rate, 2) AS gross_total
+    FROM (
+        SELECT  b.bill_id, b.patient_id, b.status, b.created_at, b.tax_rate,
+                b.coverage_type, b.coverage_amount,
+                s.subtotal,
+                ROUND(CASE WHEN b.discount_type IN ('Percent','Senior Citizen','PWD')
+                           THEN s.subtotal * b.discount_value / 100
+                           ELSE b.discount_value END, 2) AS discount_amount
+        FROM    bills b
+        JOIN    v_bill_subtotals s ON s.bill_id = b.bill_id
+    ) x
+) y;
+
+-- Paid / balance / status per bill (net of refunds). A Voided bill owes nothing.
+CREATE VIEW v_bill_payment_summary AS
+SELECT  x.bill_id, x.patient_id, x.status, x.grand_total, x.amount_paid, x.amount_refunded,
+        CASE WHEN x.status = 'Voided' THEN 0 ELSE x.grand_total - x.amount_paid END AS balance,
+        CASE WHEN x.status = 'Draft'                 THEN 'Draft'
+             WHEN x.status = 'Voided'                THEN 'Voided'
+             WHEN x.amount_paid <= 0                 THEN 'Outstanding'
+             WHEN x.amount_paid >= x.grand_total     THEN 'Fully Paid'
+             ELSE 'Partially Paid' END AS payment_status
+FROM (
+    SELECT  t.bill_id, t.patient_id, t.status, t.grand_total,
+            COALESCE(SUM(CASE WHEN p.payment_type = 'Refund' THEN -p.amount ELSE p.amount END), 0) AS amount_paid,
+            COALESCE(SUM(CASE WHEN p.payment_type = 'Refund' THEN p.amount ELSE 0 END), 0)         AS amount_refunded
+    FROM    v_bill_totals t
+    LEFT JOIN payments p ON p.bill_id = t.bill_id
+    GROUP BY t.bill_id, t.patient_id, t.status, t.grand_total
 ) x;
 
--- Paid / balance / status per bill
-CREATE VIEW v_bill_payment_summary AS
-SELECT  t.bill_id, t.patient_id, t.status, t.grand_total,
-        COALESCE(SUM(p.amount), 0) AS amount_paid,
-        t.grand_total - COALESCE(SUM(p.amount), 0) AS balance,
-        CASE WHEN t.status = 'Draft'                         THEN 'Draft'
-             WHEN COALESCE(SUM(p.amount), 0) = 0              THEN 'Outstanding'
-             WHEN COALESCE(SUM(p.amount), 0) >= t.grand_total THEN 'Fully Paid'
-             ELSE 'Partially Paid' END AS payment_status
-FROM    v_bill_totals t
-LEFT JOIN payments p ON p.bill_id = t.bill_id
-GROUP BY t.bill_id, t.patient_id, t.status, t.grand_total;
+-- Charges that came from another module and are not on a Draft / Finalized bill yet (MP11 "Unbilled charges").
+--   * consultations: the doctor's consultation fee
+--   * medicines dispensed with payment method 'Charge to Bill' (one line per dispensed medicine)
+--   * lab orders that were not cancelled
+CREATE VIEW v_unbilled_charges AS
+SELECT  'Consultation' AS source_type, c.consultation_id AS source_id, a.patient_id,
+        'Consultation' AS bill_category,
+        CONCAT('Consultation - Dr. ', d.first_name, ' ', d.last_name, ' (', d.specialization, ')') AS description,
+        1 AS quantity, d.consultation_fee AS unit_price, c.recorded_at AS charge_date
+FROM    consultations c
+JOIN    appointments a ON a.appointment_id = c.appointment_id
+JOIN    doctors d      ON d.doctor_id = a.doctor_id
+WHERE   d.consultation_fee > 0
+  AND   NOT EXISTS (SELECT 1 FROM bill_items bi JOIN bills b ON b.bill_id = bi.bill_id
+                    WHERE b.status <> 'Voided' AND bi.source_type = 'Consultation' AND bi.source_id = c.consultation_id)
+UNION ALL
+SELECT  'Dispensing', CAST(di.dispensing_item_id AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci, a.patient_id,
+        'Medicine',
+        CONCAT(m.medicine_name, ' x', di.quantity_dispensed, ' (', dr.dispensing_id, ')'),
+        di.quantity_dispensed, di.unit_price, dr.dispensed_at
+FROM    dispensing_items di
+JOIN    dispensing_records dr ON dr.dispensing_id = di.dispensing_id
+JOIN    prescription_items pi ON pi.prescription_item_id = di.prescription_item_id
+JOIN    medicines m           ON m.medicine_id = pi.medicine_id
+JOIN    prescriptions r       ON r.prescription_id = dr.prescription_id
+JOIN    consultations c       ON c.consultation_id = r.consultation_id
+JOIN    appointments a        ON a.appointment_id = c.appointment_id
+WHERE   dr.payment_method = 'Charge to Bill'
+  AND   di.unit_price > 0
+  AND   NOT EXISTS (SELECT 1 FROM bill_items bi JOIN bills b ON b.bill_id = bi.bill_id
+                    WHERE b.status <> 'Voided' AND bi.source_type = 'Dispensing'
+                      AND bi.source_id = CAST(di.dispensing_item_id AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci)
+UNION ALL
+SELECT  'Lab Order', o.order_id, o.patient_id,
+        'Lab Test',
+        CONCAT(t.test_name, ' (', o.order_id, ')'),
+        1, t.price, o.ordered_at
+FROM    lab_orders o
+JOIN    lab_tests t ON t.test_id = o.test_id
+WHERE   o.status <> 'Cancelled'
+  AND   NOT EXISTS (SELECT 1 FROM bill_items bi JOIN bills b ON b.bill_id = bi.bill_id
+                    WHERE b.status <> 'Voided' AND bi.source_type = 'Lab Order' AND bi.source_id = o.order_id);
 
 -- =====================================================================
 -- SECTION 13 : SEED DATA  -  users, settings, price lists
@@ -691,8 +822,11 @@ INSERT INTO app_settings (setting_key, setting_value, description) VALUES
  ('default_tax_rate',            '0.12', 'MP11: default tax rate'),
  ('discount_threshold_percent',  '20',   'MP11: percent discount above this needs Authorized By'),
  ('discount_threshold_amount',   '5000', 'MP11: flat discount above this needs Authorized By'),
+ ('senior_pwd_discount_percent', '20',   'MP11: Senior Citizen / PWD discount (VAT-exempt)'),
+ ('max_consultation_fee',        '20000','MP03: highest consultation fee a doctor can have'),
  ('max_login_attempts',          '5',    'Login: failed attempts before lockout'),
- ('lockout_minutes',             '15',   'Login: lockout duration');
+ ('lockout_minutes',             '15',   'Login: lockout duration'),
+ ('schema_version',              '3',    'Database structure version (set by upgrade scripts)');
 
 INSERT INTO room_types (room_type, daily_rate) VALUES
  ('Ward',1200.00),('Semi-Private',2500.00),('Private',4500.00),('ICU',9000.00);
@@ -735,6 +869,12 @@ INSERT INTO patients
  (@p8,  'Teresita', 'Lim',      'Ramos',     '1950-12-25', 'Female', 'AB-', '0924-890-1234', NULL,                        '9 Taft Ave.',                 'Manila',      'Metro Manila',  '1000', NULL,          'Osteoarthritis',     'Daniel Ramos',      '0924-111-0008', 'Child',   2),
  (@p9,  'Luis',     'Fernando', 'Aquino',    '1999-06-06', 'Male',   'O+',  '0925-901-2345', 'luis.aquino@example.com',   '60 Emerald Dr.',              'Davao City',  'Davao del Sur', '8000', NULL,          NULL,                 'Patricia Aquino',   '0925-111-0009', 'Sibling', 2),
  (@p10, 'Sofia',    NULL,       'Castillo',  '2010-08-21', 'Female', 'A+',  '0926-012-3456', NULL,                        '14 Heritage Rd.',             'Calamba',     'Laguna',        '4027', 'Dust mites',  'Allergic rhinitis',  'Angelica Castillo', '0926-111-0010', 'Parent',  2);
+
+-- Discount cards and coverage on file (applied automatically in Itemized Billing)
+UPDATE patients SET discount_card_type = 'Senior Citizen', discount_card_number = 'OSCA-CEB-0412',
+                    coverage_type = 'PhilHealth', coverage_number = '12-050123456-7' WHERE last_name = 'Garcia' AND first_name = 'Pedro';
+UPDATE patients SET discount_card_type = 'Senior Citizen', discount_card_number = 'OSCA-MNL-1188' WHERE last_name = 'Ramos' AND first_name = 'Teresita';
+UPDATE patients SET coverage_type = 'HMO', coverage_number = 'MXC-2291-0045', coverage_provider = 'Maxicare' WHERE last_name = 'Dela Cruz' AND first_name = 'Juan';
 
 INSERT INTO patient_audit_log (patient_id, field_changed, old_value, new_value, changed_by_user_id, changed_at) VALUES
  (@p2, 'phone_number',   '0918-234-0000',  '0918-234-5678',  2, DATE_SUB(NOW(), INTERVAL 3 HOUR)),
@@ -977,35 +1117,36 @@ INSERT INTO bills
  (@b6, @p6, 'Finalized', 'Flat',    50.00, 0.1200, NULL,                   DATE_SUB(NOW(), INTERVAL 90 MINUTE), 6, DATE_SUB(NOW(), INTERVAL 85 MINUTE)),
  (@b7, @p7, 'Draft',     'Flat',    0.00,  0.1200, NULL,                   DATE_SUB(NOW(), INTERVAL 5 MINUTE),  6, NULL);
 
-INSERT INTO bill_items (bill_id, bill_category, description, quantity, unit_price) VALUES
+-- source_type / source_id link a charge to the consultation or lab order it came from (see v_unbilled_charges).
+INSERT INTO bill_items (bill_id, bill_category, description, quantity, unit_price, source_type, source_id) VALUES
  -- Bill 1
- (@b1, 'Consultation',  'General Consultation',       1,  500.00),
- (@b1, 'Medicine',      'Paracetamol 500mg x15',      15, 3.50),
- (@b1, 'Lab Test',      'White Blood Cell Count',     1,  150.00),
+ (@b1, 'Consultation',  'General Consultation',       1,  500.00,  'Consultation', @c1),
+ (@b1, 'Medicine',      'Paracetamol 500mg x15',      15, 3.50,    NULL, NULL),
+ (@b1, 'Lab Test',      'White Blood Cell Count',     1,  150.00,  'Lab Order', @lo1),
  -- Bill 2
- (@b2, 'Consultation',  'General Consultation',       1,  500.00),
- (@b2, 'Procedure',     'ECG (12-lead)',              1,  600.00),
- (@b2, 'Lab Test',      'Total Cholesterol',          1,  250.00),
- (@b2, 'Lab Test',      'Fasting Blood Sugar',        1,  120.00),
- (@b2, 'Medicine',      'Amlodipine 5mg x40',         40, 10.00),
+ (@b2, 'Consultation',  'General Consultation',       1,  500.00,  'Consultation', @c2),
+ (@b2, 'Procedure',     'ECG (12-lead)',              1,  600.00,  NULL, NULL),
+ (@b2, 'Lab Test',      'Total Cholesterol',          1,  250.00,  'Lab Order', CONCAT('LO-',@d,'-002')),
+ (@b2, 'Lab Test',      'Fasting Blood Sugar',        1,  120.00,  'Lab Order', CONCAT('LO-',@d,'-003')),
+ (@b2, 'Medicine',      'Amlodipine 5mg x40',         40, 10.00,   NULL, NULL),
  -- Bill 3
- (@b3, 'Consultation',  'Specialist Consultation',    1,  1000.00),
- (@b3, 'Lab Test',      'Troponin I',                 1,  900.00),
- (@b3, 'Procedure',     'ECG (12-lead)',              1,  600.00),
+ (@b3, 'Consultation',  'Specialist Consultation',    1,  1000.00, NULL, NULL),
+ (@b3, 'Lab Test',      'Troponin I',                 1,  900.00,  'Lab Order', CONCAT('LO-',@d,'-004')),
+ (@b3, 'Procedure',     'ECG (12-lead)',              1,  600.00,  NULL, NULL),
  -- Bill 4
- (@b4, 'Room',          'Semi-Private Room (3 days)', 3,  2500.00),
- (@b4, 'Procedure',     'Nebulization',               2,  350.00),
- (@b4, 'Medicine',      'Ceftriaxone 1g Vial x6',     6,  180.00),
- (@b4, 'Consultation',  'Specialist Consultation',    1,  1000.00),
+ (@b4, 'Room',          'Semi-Private Room (3 days)', 3,  2500.00, NULL, NULL),
+ (@b4, 'Procedure',     'Nebulization',               2,  350.00,  NULL, NULL),
+ (@b4, 'Medicine',      'Ceftriaxone 1g Vial x6',     6,  180.00,  NULL, NULL),
+ (@b4, 'Consultation',  'Specialist Consultation',    1,  1000.00, NULL, NULL),
  -- Bill 5
- (@b5, 'Consultation',  'Follow-up Consultation',     1,  300.00),
- (@b5, 'Miscellaneous', 'Medical Certificate',        1,  150.00),
+ (@b5, 'Consultation',  'Follow-up Consultation',     1,  300.00,  'Consultation', @c3),
+ (@b5, 'Miscellaneous', 'Medical Certificate',        1,  150.00,  NULL, NULL),
  -- Bill 6
- (@b6, 'Consultation',  'General Consultation',       1,  500.00),
- (@b6, 'Lab Test',      'Urinalysis',                 1,  100.00),
- (@b6, 'Miscellaneous', 'Administrative Fee',         1,  100.00),
+ (@b6, 'Consultation',  'General Consultation',       1,  500.00,  NULL, NULL),
+ (@b6, 'Lab Test',      'Urinalysis',                 1,  100.00,  'Lab Order', CONCAT('LO-',@d,'-007')),
+ (@b6, 'Miscellaneous', 'Administrative Fee',         1,  100.00,  NULL, NULL),
  -- Bill 7 (draft)
- (@b7, 'Consultation',  'General Consultation',       1,  500.00);
+ (@b7, 'Consultation',  'General Consultation',       1,  500.00,  NULL, NULL);
 
 INSERT INTO payments
  (payment_id, bill_id, amount, payment_method, reference_number, tendered_amount, received_by_user_id, payment_datetime) VALUES
@@ -1044,4 +1185,5 @@ INSERT INTO code_sequences (prefix, seq_date, last_number) VALUES
 --   SELECT * FROM v_bill_payment_summary;       -- Fully Paid / Partially Paid / Outstanding / Draft
 --   SELECT username, role FROM users;           -- 6 users
 --   SELECT DISTINCT specialization FROM doctors; -- feeds the Specialization drop-down
+--   SELECT * FROM v_unbilled_charges;            -- lab orders LO-...-005 and -006 are not billed yet
 -- =====================================================================

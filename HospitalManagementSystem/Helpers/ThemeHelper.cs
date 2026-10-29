@@ -313,6 +313,15 @@ namespace HospitalManagementSystem.Helpers
                 case "emergency":
                     back = Danger; fore = Color.White; return true;
 
+                case "voided":
+                case "void":
+                case "refund":
+                case "refunded":
+                    back = DangerSoft; fore = DangerInk; return true;
+
+                case "partly refunded":
+                    back = WarningSoft; fore = Warning; return true;
+
                 case "low stock":
                 case "draft":
                 case "walk-in":

@@ -4,7 +4,7 @@ namespace HospitalManagementSystem.Helpers
 {
     /// <summary>
     /// Generates every formatted code in the system from ONE place:
-    ///   dated     : PAT-20261015-001, APT-..., CON-..., PRE-..., MS-..., LO-..., LR-..., BILL-..., PAY-...
+    ///   dated     : PAT-20261015-001, APT-..., CON-..., PRE-..., MS-..., LO-..., LR-..., BILL-..., PAY-..., RFD-...
     ///   non-dated : DOC-001, MED-001, TST-001
     ///
     /// The running number lives in the `code_sequences` table (per prefix, per day),
@@ -28,6 +28,7 @@ namespace HospitalManagementSystem.Helpers
             public const string LabResult = "LR";
             public const string Bill = "BILL";
             public const string Payment = "PAY";
+            public const string Refund = "RFD";
             public const string Doctor = "DOC";
             public const string Medicine = "MED";
             public const string LabTest = "TST";
